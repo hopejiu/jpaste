@@ -1,0 +1,91 @@
+export const styles = {
+  container: { display: 'flex', flexDirection: 'column', height: '100vh', outline: 'none' },
+  header: {
+    display: 'flex', alignItems: 'center', padding: '12px 16px', gap: '8px',
+    borderBottom: '1px solid var(--color-border)', flexShrink: 0,
+  },
+  searchBox: { flex: 1, position: 'relative', display: 'flex', alignItems: 'center' },
+  searchIcon: { position: 'absolute', left: '12px', color: 'var(--color-muted)', pointerEvents: 'none' },
+  searchInput: {
+    width: '100%', height: '40px', background: 'var(--color-surface)',
+    border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+    padding: '0 36px 0 38px', fontSize: 'var(--font-size-base)',
+    color: 'var(--color-foreground)', outline: 'none',
+    transition: 'border-color var(--transition-fast)', fontFamily: 'inherit',
+  },
+  clearBtn: {
+    position: 'absolute', right: '6px', width: '28px', height: '28px',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    border: 'none', background: 'transparent', color: 'var(--color-muted)',
+    cursor: 'pointer', borderRadius: 'var(--radius-sm)',
+  },
+  settingsBtn: {
+    width: '40px', height: '40px', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', border: 'none', background: 'transparent',
+    color: 'var(--color-muted)', cursor: 'pointer', borderRadius: 'var(--radius-md)',
+    flexShrink: 0,
+  },
+  list: { flex: 1, overflowY: 'auto', padding: '4px 0' },
+  empty: {
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    justifyContent: 'center', height: '200px', padding: '24px', textAlign: 'center',
+  },
+  emptyTitle: {
+    fontSize: 'var(--font-size-lg)', fontWeight: 500,
+    color: 'var(--color-foreground)', marginBottom: '8px',
+  },
+  emptyDesc: {
+    fontSize: 'var(--font-size-sm)', color: 'var(--color-muted)',
+    lineHeight: 1.6, maxWidth: '300px',
+  },
+  item: {
+    display: 'flex', gap: '10px', padding: '10px 16px', cursor: 'pointer',
+    transition: 'background var(--transition-fast)',
+    borderBottom: '1px solid var(--color-border)',
+  },
+  itemFocused: { background: 'var(--color-surface-hover)' },
+  shortcut: {
+    minWidth: '24px', height: '22px', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', background: 'rgba(99,102,241,0.15)',
+    color: 'var(--color-primary)', borderRadius: '4px',
+    fontSize: 'var(--font-size-xs)', fontWeight: 600, marginTop: '1px', flexShrink: 0,
+  },
+  itemContent: { flex: 1, minWidth: 0 },
+  itemText: {
+    fontSize: 'var(--font-size-sm)', lineHeight: 1.55, color: 'var(--color-foreground)',
+    whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflow: 'hidden',
+  },
+  itemMeta: { display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px' },
+  itemTime: { flex: 1, display: 'flex', gap: '8px', alignItems: 'baseline' },
+  itemRel: { fontSize: 'var(--font-size-xs)', color: 'var(--color-muted)' },
+  itemAbs: { fontSize: '11px', color: 'var(--color-muted)', opacity: 0.65 },
+  actionBtn: {
+    width: '28px', height: '28px', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', border: 'none', background: 'transparent',
+    color: 'var(--color-muted)', cursor: 'pointer', borderRadius: '4px',
+    transition: 'all var(--transition-fast)',
+  },
+  footer: {
+    borderTop: '1px solid var(--color-border)', padding: '8px 16px',
+    textAlign: 'center', flexShrink: 0,
+  },
+  footerText: { fontSize: 'var(--font-size-xs)', color: 'var(--color-muted)' },
+  ctxOverlay: {
+    position: 'fixed', minWidth: '160px', background: 'var(--color-surface)',
+    border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '4px', zIndex: 2000,
+    animation: 'slideDown 120ms ease-out',
+  },
+  ctxItem: {
+    display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px',
+    fontSize: 'var(--font-size-sm)', color: 'var(--color-foreground)',
+    borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+    transition: 'background var(--transition-fast)',
+  },
+  ctxItemDanger: {
+    display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px',
+    fontSize: 'var(--font-size-sm)', color: 'var(--color-destructive)',
+    borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+    transition: 'background var(--transition-fast)',
+  },
+}

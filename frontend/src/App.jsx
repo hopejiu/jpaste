@@ -1,56 +1,50 @@
-import { useState, useEffect } from 'react'
-import {Events, WML} from "@wailsio/runtime";
-import {GreetService} from "../bindings/changeme";
+import { useState, useEffect, useRef } from 'react'
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { Events } from '@wailsio/runtime'
+import { ClipboardProvider } from './context/ClipboardContext'
+import { EVENTS } from './events'
+import MainPage from './pages/MainPage'
+import SettingsPage from './pages/SettingsPage'
 
-function App() {
-  const [name, setName] = useState('');
-  const [result, setResult] = useState('Please enter your name below 👇');
-  const [time, setTime] = useState('Listening for Time event...');
+export default function App() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [animState, setAnimState] = useState('enter')
+  const appRef = useRef(null)
 
-  const doGreet = () => {
-    let localName = name;
-    if (!localName) {
-      localName = 'anonymous';
-    }
-    GreetService.Greet(localName).then((resultValue) => {
-      setResult(resultValue);
-    }).catch((err) => {
-      console.log(err);
-    });
-  }
-
+  // Handle navigate event from Go (system tray).
   useEffect(() => {
-    Events.On('time', (timeValue) => {
-      setTime(timeValue.data);
-    });
-    // Reload WML so it picks up the wml tags
-    WML.Reload();
-  }, []);
+    const unsub = Events.On(EVENTS.NAVIGATE, (evt) => {
+      const path = evt.data || '/'
+      navigate(path)
+    })
+    return unsub
+  }, [navigate])
+
+  // Window show/hide animation.
+  useEffect(() => {
+    const unsubShow = Events.On(EVENTS.WINDOW_SHOWN, () => setAnimState('enter'))
+    const unsubHide = Events.On(EVENTS.WINDOW_HIDING, () => setAnimState('exit'))
+    return () => { unsubShow(); unsubHide() }
+  }, [])
+
+  // Listen for route changes to trigger enter animation.
+  useEffect(() => {
+    setAnimState('enter')
+  }, [location.pathname])
+
+  const animClass = animState === 'enter' ? 'app-enter' : 'app-exit'
 
   return (
-    <div className="container">
-      <div>
-        <a data-wml-openURL="https://wails.io">
-          <img src="/wails.png" className="logo" alt="Wails logo"/>
-        </a>
-        <a data-wml-openURL="https://reactjs.org">
-          <img src='/react.svg' className="logo react" alt="React logo"/>
-        </a>
+    <ClipboardProvider>
+      <div ref={appRef} className={animClass} style={{
+        width: '100%', height: '100vh', display: 'flex', flexDirection: 'column',
+      }}>
+        <Routes>
+          <Route path="/" element={<MainPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Routes>
       </div>
-      <h1>Wails + React</h1>
-      <div className="result">{result}</div>
-      <div className="card">
-        <div className="input-box">
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} type="text" autoComplete="off"/>
-          <button className="btn" onClick={doGreet}>Greet</button>
-        </div>
-      </div>
-      <div className="footer">
-        <div><p>Click on the Wails logo to learn more</p></div>
-        <div><p>{time}</p></div>
-      </div>
-    </div>
+    </ClipboardProvider>
   )
 }
-
-export default App

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>jPaste Architecture Review</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  body { font-family: 'Inter', sans-serif; background: #f8fafc; color: #0f172a; }
+  .card { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 24px; margin-bottom: 24px; }
+  .badge { display: inline-flex; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge-strong { background: #dcfce7; color: #166534; }
+  .badge-worth { background: #fef9c3; color: #854d0e; }
+  .badge-spec { background: #e0e7ff; color: #3730a3; }
+  .badge-p1 { background: #fee2e2; color: #991b1b; }
+  .badge-p2 { background: #fef3c7; color: #92400e; }
+  .badge-p3 { background: #e0e7ff; color: #3730a3; }
+  .diagram { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; background: #f1f5f9; margin: 12px 0; font-size: 14px; line-height: 1.6; }
+  .before { background: #fef2f2; }
+  .after { background: #f0fdf4; }
+  .arrow { text-align: center; font-size: 20px; color: #6366f1; margin: 8px 0; }
+  pre { background: #1e293b; color: #e2e8f0; padding: 12px 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+  h2 code, h3 code { font-size: 85%; }
+  .top-rec { background: linear-gradient(135deg, #6366f1, #818cf8); color: #fff; border-radius: 12px; padding: 24px; }
+  .top-rec a { color: #e0e7ff; }
+  .file-ref { font-family: monospace; font-size: 12px; color: #64748b; }
+  .metric { font-size: 13px; color: #64748b; margin-left: 8px; }
+</style>
+</head>
+<body class="max-w-3xl mx-auto py-8 px-4">
+
+<h1 class="text-2xl font-bold mb-2">jPaste Architecture Review</h1>
+<p class="text-slate-500 mb-8">Generated 2026-06-02 · 5 candidates · stack: Go + Wails v3 + React</p>
+
+<!-- Candidate 1: God main.go -->
+<div class="card">
+  <div class="flex items-center gap-3 mb-3">
+    <span class="badge badge-strong">Strong</span>
+    <span class="badge badge-p1">P1</span>
+    <h2 class="text-lg font-semibold">C1: <code>main.go</code> 职责过多（God Object）</h2>
+    <span class="metric">LOC: ~240</span>
+  </div>
+  <p class="file-ref">files: main.go</p>
+
+  <div class="mt-3 space-y-2">
+    <p><strong>Problem</strong> — <code>main.go</code> 当前承担了所有「装配」职责：创建 4 个 Service、5 个适配器（clipReader / clipWriter / eventEmitter / pasteRunner / toggleWindow）、注册全局热键、配置系统托盘、设置窗口事件钩子、清理过期数据。理解启动流程需要在同一个 240 行的文件中上下跳转。</p>
+    <p><strong>Solution</strong> — 将装配逻辑按「启动阶段」抽取为独立函数，每个阶段读起来像一句英语。例如：</p>
+    <pre>func main() {
+    app, svcs := bootstrap()
+    win := createWindow(app)
+    setupSystemTray(app, win)
+    registerGlobalHotkey(win, svcs.settings)
+    runCleanup(svcs.history, svcs.settings)
+    app.Run()
+}</pre>
+    <p><strong>Benefits</strong> — <strong>Locality:</strong> 每个阶段的代码集中在一个函数，修改系统托盘不会碰到热键注册。 <strong>Leverage:</strong> 顶层 <code>main()</code> 成为可读的「脚本」，一眼看到启动做了几步。</p>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4 mt-4">
+    <div class="diagram before">
+      <div class="font-semibold text-red-700 mb-1">Before</div>
+      <pre class="text-xs" style="background:#fef2f2;color:#7f1d1d;padding:8px">
+main() // ~240 lines
+ ├─ init settings
+ ├─ init DB
+ ├─ 5 adapters
+ ├─ 4 services
+ ├─ app creation
+ ├─ wire adapters
+ ├─ window creation
+ ├─ paste wiring
+ ├─ system tray (menu, events)
+ ├─ hotkey registration
+ ├─ window hooks (close, blur)
+ ├─ cleanup
+ ├─ autostart
+ └─ app.Run()
+      </pre>
+    </div>
+    <div class="diagram after">
+      <div class="font-semibold text-green-700 mb-1">After</div>
+      <pre class="text-xs" style="background:#f0fdf4;color:#14532d;padding:8px">
+main() // ~20 lines
+ ├─ bootstrap()       // app + services
+ ├─ createWindow()    // + paste wiring
+ ├─ setupSystemTray()
+ ├─ registerHotkey()
+ └─ runCleanup()
+      </pre>
+    </div>
+  </div>
+</div>
+
+<!-- Candidate 2: App Adapters Duplication -->
+<div class="card">
+  <div class="flex items-center gap-3 mb-3">
+    <span class="badge badge-strong">Strong</span>
+    <span class="badge badge-p1">P1</span>
+    <h2 class="text-lg font-semibold">C2: 四个相同模式的 <code>*application.App</code> 适配器</h2>
+    <span class="metric">4 × ~8 LOC each</span>
+  </div>
+  <p class="file-ref">files: main.go (clipReader, clipWriter, eventEmitter, pasteRunner)</p>
+
+  <div class="mt-3 space-y-2">
+    <p><strong>Problem</strong> — <code>clipReader</code>、<code>clipWriter</code>、<code>eventEmitter</code>、<code>pasteRunner</code> 是四个几乎相同的结构体，都持有 <code>*application.App</code>（或 <code>fn func()</code>），在应用创建后再注入。这是同一个「懒装配」模式复制了四次。</p>
+    <p><strong>Solution</strong> — 统一为一个 <code>AppHandle</code> 结构体，在 <code>app</code> 创建后用一次 <code>Wire(app)</code> 完成所有注入：</p>
+    <pre>type AppHandle struct {
+    app *application.App
+}
+func (h *AppHandle) ReadClipboard() (string, bool) { return h.app.Clipboard.Text() }
+func (h *AppHandle) WriteClipboard(s string) bool  { return h.app.Clipboard.SetText(s) }
+func (h *AppHandle) Emit(name string, data any)    { h.app.Event.Emit(name, data) }
+func (h *AppHandle) Wire(app *application.App)     { h.app = app }</pre>
+    <p><strong>Benefits</strong> — <strong>Locality:</strong> 所有 app 依赖集中在一个结构体。 <strong>Leverage:</strong> 新增 app 依赖时只需加一个方法，不需要再创建新的 struct。 <strong>Deletion test:</strong> 删除 3 个 struct 定义，复杂度只有一个结构体。</p>
+  </div>
+
+  <div class="mermaid mt-4" style="background:#f8fafc;padding:12px;border-radius:8px">
+graph LR
+  subgraph Before["Before — 4 adapters"]
+    CR[clipReader] --> App
+    CW[clipWriter] --> App
+    EV[eventEmitter] --> App
+    PR[pasteRunner]
+  end
+  subgraph After["After — 1 handle"]
+    AH[AppHandle<br/>.ReadClipboard<br/>.WriteClipboard<br/>.Emit<br/>] --> App
+    PF[pasteFn: func]
+  end
+  style Before fill:#fef2f2
+  style After fill:#f0fdf4
+  </div>
+</div>
+
+<!-- Candidate 3: ClipboardService does too much -->
+<div class="card">
+  <div class="flex items-center gap-3 mb-3">
+    <span class="badge badge-worth">Worth exploring</span>
+    <span class="badge badge-p2">P2</span>
+    <h2 class="text-lg font-semibold">C3: <code>ClipboardService</code> 职责过载</h2>
+    <span class="metric">LOC: ~120</span>
+  </div>
+  <p class="file-ref">files: internal/clipboard/service.go, internal/db/db.go</p>
+
+  <div class="mt-3 space-y-2">
+    <p><strong>Problem</strong> — <code>ClipboardService</code> 同时做了四件事：轮询剪贴板、计算 SHA-256、写 SQLite、发事件。轮询逻辑和持久化逻辑耦合在一起，测试剪贴板检测必须带着数据库。</p>
+    <p><strong>Solution</strong> — 拆为两层：
+    <br/>① <strong>Watcher</strong>：纯轮询 + 哈希比较，产出 <code>&lt;-chan Entry</code>
+    <br/>② <strong>Persister</strong>（并入 HistoryService）：消耗 channel，写入 DB + 发出事件
+    <br/>Watcher 可以用 mock clipboard reader 做单元测试，不依赖 DB。</p>
+    <p><strong>Benefits</strong> — <strong>Locality:</strong> 轮询逻辑和存储逻辑可以独立修改。 <strong>Leverage:</strong> Watcher 的 channel 成为自然的 seam，未来可以接多个 consumer。</p>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4 mt-4">
+    <div class="diagram before">
+      <div class="font-semibold text-red-700 mb-1">Before</div>
+      <pre class="text-xs" style="background:#fef2f2;color:#7f1d1d;padding:8px">
+ClipboardService (does everything)
+ ├─ pollLoop() { ticker }
+ ├─ checkClipboard()
+ │   ├─ read clipboard
+ │   ├─ sha256()
+ │   ├─ upsert DB
+ │   └─ emit events
+ └─ ServiceStartup / ServiceShutdown</pre>
+    </div>
+    <div class="diagram after">
+      <div class="font-semibold text-green-700 mb-1">After</div>
+      <pre class="text-xs" style="background:#f0fdf4;color:#14532d;padding:8px">
+Watcher (pure detect)
+ ├─ pollLoop() { ticker }
+ ├─ check() → (Entry, isNew)
+ └─ publish to channel
+
+Persister (in HistoryService)
+ ├─ consume channel
+ ├─ upsert DB
+ └─ emit events</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Candidate 4: Event strings -->
+<div class="card">
+  <div class="flex items-center gap-3 mb-3">
+    <span class="badge badge-strong">Strong</span>
+    <span class="badge badge-p1">P1</span>
+    <h2 class="text-lg font-semibold">C4: 事件名散落为字符串字面量</h2>
+    <span class="metric">6 events across Go + JS</span>
+  </div>
+  <p class="file-ref">files: internal/clipboard/service.go, main.go, src/App.jsx, src/context/ClipboardContext.jsx</p>
+
+  <div class="mt-3 space-y-2">
+    <p><strong>Problem</strong> — <code>"clipboard-updated"</code>、<code>"clipboard-captured"</code>、<code>"window-shown"</code>、<code>"window-hiding"</code>、<code>"navigate"</code> 以字符串形式散落在 Go 的 <code>app.Event.Emit</code> 和 JS 的 <code>Events.On</code> 中。拼错一个字不会编译错误，只会在运行时静默失败。</p>
+    <p><strong>Solution</strong> — 在 Go 端定义事件常量（Wails v3 自动生成类型安全的 JS API）或在 JS 端集中管理事件名：</p>
+    <pre>// Go: events.go
+const (
+    EvtClipboardUpdated  = "clipboard-updated"
+    EvtClipboardCaptured = "clipboard-captured"
+    EvtWindowShown       = "window-shown"
+    EvtWindowHiding      = "window-hiding"
+    EvtNavigate          = "navigate"
+)
+
+// JS: events.js
+export const EVENTS = {
+    CLIPBOARD_UPDATED: "clipboard-updated",
+    WINDOW_SHOWN:      "window-shown",
+    // ...
+}</pre>
+    <p><strong>Benefits</strong> — <strong>Locality:</strong> 事件名集中管理，IDE 自动补全。 <strong>Leverage:</strong> 重构事件名时只需改一处。 <strong>Deletion test:</strong> 删除事件常量 → IDE 报编译/引用错误，而不是静默失败。</p>
+  </div>
+</div>
+
+<!-- Candidate 5: DB global variable -->
+<div class="card">
+  <div class="flex items-center gap-3 mb-3">
+    <span class="badge badge-worth">Worth exploring</span>
+    <span class="badge badge-p2">P2</span>
+    <h2 class="text-lg font-semibold">C5: <code>db.DB</code> 作为包级全局变量</h2>
+    <span class="metric">used by: main, clipboard, history, fileop (closure)</span>
+  </div>
+  <p class="file-ref">files: internal/db/db.go</p>
+
+  <div class="mt-3 space-y-2">
+    <p><strong>Problem</strong> — <code>internal/db</code> 暴露 <code>var DB *sql.DB</code> 作为全局变量。调用方直接访问这个变量（<code>db.DB.Exec(...)</code>），无法 mock、无法替换，无法并发测试。</p>
+    <p><strong>Solution</strong> — 改为 <code>db.New(path) *DB</code> 返回结构体，通过构造函数注入到需要它的 Service 中。当前 history、clipboard 等 Service 已经接受 <code>*sql.DB</code> 参数，只需把 <code>db.DB</code> 改为传入 <code>dbHandle.Conn</code>：</p>
+    <pre>// Before
+db.Init(path)
+histSvc := history.NewService(db.DB, ...)
+
+// After
+store, _ := db.New(path)
+histSvc := history.NewService(store.Conn, ...)</pre>
+    <p><strong>Benefits</strong> — <strong>Leverage:</strong> 测试时可以用 <code>:memory:</code> SQLite 替换。 <strong>Locality:</strong> 全局可变状态限制在 <code>db.Store</code> 生命周期内。</p>
+  </div>
+</div>
+
+<!-- Top Recommendation -->
+<div class="top-rec mt-8">
+  <h2 class="text-lg font-bold mb-2">Top Recommendation</h2>
+  <p class="text-white/90 leading-relaxed">
+    建议先做 <strong>C1</strong>（拆分 main.go）+ <strong>C2</strong>（合并适配器）+ <strong>C4</strong>（事件常量化）。
+    这三个改动互不依赖、可以一次完成，影响面仅限 Go 侧 2 个文件和 JS 侧 2 个文件。
+    <strong>收益最大</strong>：C1 让新人/下次自己读启动流程时只需 20 秒看一遍 main()，而非在 240 行里跳来跳去。
+    做完这三个后，main.go 应缩减到 ~60 行，外加 2 个新文件（<code>event_names.go</code>、<code>app_handle.go</code>）。
+  </p>
+  <p class="text-white/70 text-sm mt-2">
+    C3（拆分 ClipboardService）和 C5（去掉全局 DB）属于更深的结构性改进，建议在下一次大的功能迭代时处理。
+  </p>
+</div>
+
+<script>mermaid.initialize({startOnLoad:true, theme:'base', themeVariables:{primaryColor:'#6366f1',primaryTextColor:'#fff',lineColor:'#94a3b8'}})</script>
+</body>
+</html>
