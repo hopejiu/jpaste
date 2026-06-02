@@ -43,3 +43,41 @@ export class Stats {
         return new Stats(/** @type {Partial<Stats>} */($$parsedSource));
     }
 }
+
+/**
+ * SyncFormat is a text format payload for sync push.
+ */
+export class SyncFormat {
+    /**
+     * Creates a new SyncFormat instance.
+     * @param {Partial<SyncFormat>} [$$source = {}] - The source object to create the SyncFormat.
+     */
+    constructor($$source = {}) {
+        if (!("t" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["t"] = 0;
+        }
+        if (!("c" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["c"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SyncFormat instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {SyncFormat}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SyncFormat(/** @type {Partial<SyncFormat>} */($$parsedSource));
+    }
+}

@@ -6,6 +6,10 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as history$0 from "../history/models.js";
+
 /**
  * Config holds WebDAV connection credentials.
  * Stored in %APPDATA%/jPaste/webdav.json — not synced.
@@ -63,25 +67,28 @@ export class Config {
     }
 }
 
+/**
+ * PushInput is a clipboard entry queued for upload.
+ */
 export class PushInput {
     /**
      * Creates a new PushInput instance.
      * @param {Partial<PushInput>} [$$source = {}] - The source object to create the PushInput.
      */
     constructor($$source = {}) {
-        if (!("content_hash" in $$source)) {
+        if (!("ContentHash" in $$source)) {
             /**
              * @member
              * @type {string}
              */
-            this["content_hash"] = "";
+            this["ContentHash"] = "";
         }
-        if (!("content" in $$source)) {
+        if (!("Formats" in $$source)) {
             /**
              * @member
-             * @type {string}
+             * @type {history$0.SyncFormat[]}
              */
-            this["content"] = "";
+            this["Formats"] = [];
         }
 
         Object.assign(this, $$source);
@@ -93,7 +100,15 @@ export class PushInput {
      * @returns {PushInput}
      */
     static createFrom($$source = {}) {
+        const $$createField1_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("Formats" in $$parsedSource) {
+            $$parsedSource["Formats"] = $$createField1_0($$parsedSource["Formats"]);
+        }
         return new PushInput(/** @type {Partial<PushInput>} */($$parsedSource));
     }
 }
+
+// Private type creation functions
+const $$createType0 = history$0.SyncFormat.createFrom;
+const $$createType1 = $Create.Array($$createType0);

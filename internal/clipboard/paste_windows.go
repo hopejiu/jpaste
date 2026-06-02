@@ -3,14 +3,7 @@
 package clipboard
 
 import (
-	"syscall"
 	"time"
-)
-
-var (
-	user32             = syscall.NewLazyDLL("user32.dll")
-	procKeybdEvent     = user32.NewProc("keybd_event")
-	procGetForeground  = user32.NewProc("GetForegroundWindow")
 )
 
 const (

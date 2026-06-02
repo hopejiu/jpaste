@@ -4,6 +4,7 @@ package hotkey
 
 import (
 	"errors"
+	"log"
 	"strings"
 
 	"golang.design/x/hotkey"
@@ -15,16 +16,21 @@ var hk *hotkey.Hotkey
 func Register(keystr string, callback func()) error {
 	mods, key, err := parse(keystr)
 	if err != nil {
+		log.Printf("[hotkey] parse %q failed: %v", keystr, err)
 		return err
 	}
 
+	log.Printf("[hotkey] Registering %q (mods=%v key=%v)", keystr, mods, key)
 	hk = hotkey.New(mods, key)
 	if err := hk.Register(); err != nil {
+		log.Printf("[hotkey] Register %q failed: %v", keystr, err)
 		return err
 	}
 
+	log.Printf("[hotkey] %q registered successfully", keystr)
 	go func() {
 		for range hk.Keydown() {
+			log.Println("[hotkey] Keydown triggered, calling callback")
 			callback()
 		}
 	}()
@@ -34,6 +40,7 @@ func Register(keystr string, callback func()) error {
 
 // UnregisterAll unregisters the hotkey.
 func UnregisterAll() {
+	log.Println("[hotkey] UnregisterAll called")
 	if hk != nil {
 		hk.Unregister()
 		hk = nil

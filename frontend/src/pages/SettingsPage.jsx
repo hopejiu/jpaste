@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronUp, ChevronDown, Globe, CheckCircle, XCircle } from 'lucide-react'
+import { ArrowLeft, ChevronUp, ChevronDown, Globe, CheckCircle, XCircle, Trash2 } from 'lucide-react'
 import { useClipboard } from '../context/ClipboardContext'
 import { Service as SyncService } from '../../bindings/jpaste/internal/sync'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
@@ -24,7 +24,7 @@ function parseHotkey(hotkey) {
 }
 
 export default function SettingsPage() {
-  const { settings, saveSettings, wdConfig, refreshWdConfig } = useClipboard()
+  const { settings, saveSettings, wdConfig, refreshWdConfig, clearAll } = useClipboard()
   const navigate = useNavigate()
   const [local, setLocal] = useState({ ...settings })
   const [saved, setSaved] = useState(false)
@@ -41,6 +41,7 @@ export default function SettingsPage() {
 
   // Stats state.
   const [stats, setStats] = useState({ count: 0, total_bytes: 0 })
+  const [clearing, setClearing] = useState(false)
 
   useEffect(() => {
     setWdUrl(wdConfig.url)
@@ -150,6 +151,17 @@ export default function SettingsPage() {
     handleSave({ action_config: cfg })
   }
 
+  const handleClearAll = async () => {
+    if (!window.confirm('确定要清空全部剪贴板历史吗？此操作不可撤销。')) return
+    setClearing(true)
+    try {
+      await clearAll()
+      setStats({ count: 0, total_bytes: 0 })
+    } finally {
+      setClearing(false)
+    }
+  }
+
   const toggleAction = (action) => {
     const cfg = { ...local.action_config }
     cfg[action.id] = { ...action.config, enabled: !action.config.enabled }
@@ -218,6 +230,14 @@ export default function SettingsPage() {
             <span style={styles.statsDot}>·</span>
             <span>{formatBytes(stats.total_bytes)}</span>
           </div>
+          <button
+            style={{ ...styles.clearAllBtn, ...(clearing ? { opacity: 0.6 } : {}) }}
+            onClick={handleClearAll}
+            disabled={clearing || stats.count === 0}
+          >
+            <Trash2 size={14} />
+            {clearing ? '清空中...' : '清空全部历史'}
+          </button>
         </div>
 
         {/* Default Action */}

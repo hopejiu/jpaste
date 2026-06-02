@@ -25,7 +25,26 @@ export const styles = {
     color: 'var(--color-muted)', cursor: 'pointer', borderRadius: 'var(--radius-md)',
     flexShrink: 0,
   },
+  tabBar: {
+    display: 'flex', gap: '4px', padding: '8px 16px',
+    borderBottom: '1px solid var(--color-border)', flexShrink: 0, overflowX: 'auto',
+  },
+  tab: {
+    padding: '5px 14px', fontSize: 'var(--font-size-xs)', fontWeight: 500,
+    border: '1px solid transparent', borderRadius: 'var(--radius-full)',
+    background: 'transparent', color: 'var(--color-muted)',
+    cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit',
+    transition: 'all var(--transition-fast)', outline: 'none',
+  },
+  tabActive: {
+    background: 'rgba(99,102,241,0.12)', color: 'var(--color-primary)',
+    borderColor: 'rgba(99,102,241,0.3)',
+  },
   list: { flex: 1, overflowY: 'auto', padding: '4px 0' },
+  loading: {
+    textAlign: 'center', padding: '12px',
+    fontSize: 'var(--font-size-xs)', color: 'var(--color-muted)',
+  },
   empty: {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     justifyContent: 'center', height: '200px', padding: '24px', textAlign: 'center',
@@ -88,4 +107,23 @@ export const styles = {
     borderRadius: 'var(--radius-sm)', cursor: 'pointer',
     transition: 'background var(--transition-fast)',
   },
+  itemImagePlaceholder: {
+    display: 'flex', alignItems: 'center', gap: '8px',
+    padding: '8px 12px', borderRadius: 'var(--radius-md)',
+    background: 'rgba(99,102,241,0.06)', fontSize: 'var(--font-size-sm)',
+    color: 'var(--color-muted)',
+  },
+  itemImageLabel: { fontWeight: 500 },
+  imgOverlay: {
+    position: 'fixed', inset: 0, zIndex: 3000,
+    background: 'rgba(0,0,0,0.85)', display: 'flex',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  imgClose: {
+    position: 'absolute', top: '16px', right: '16px',
+    background: 'transparent', border: 'none', color: '#fff',
+    cursor: 'pointer', zIndex: 1,
+  },
+  imgLoading: { color: '#fff', fontSize: 'var(--font-size-lg)' },
+  imgPreview: { maxWidth: '90vw', maxHeight: '90vh', borderRadius: 'var(--radius-md)' },
 }

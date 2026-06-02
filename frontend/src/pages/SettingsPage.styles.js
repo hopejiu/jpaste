@@ -38,6 +38,13 @@ export const styles = {
   retainValue: { fontSize: 'var(--font-size-sm)', fontWeight: 500, color: 'var(--color-foreground)', minWidth: '56px' },
   statsRow: { marginTop: '10px', fontSize: 'var(--font-size-xs)', color: 'var(--color-muted)', display: 'flex', gap: '6px', alignItems: 'center' },
   statsDot: { opacity: 0.4 },
+  clearAllBtn: {
+    marginTop: '10px', padding: '8px 14px', display: 'flex', alignItems: 'center',
+    gap: '6px', fontSize: 'var(--font-size-xs)', fontWeight: 500,
+    border: '1px solid rgba(239,68,68,0.3)', borderRadius: 'var(--radius-md)',
+    background: 'rgba(239,68,68,0.06)', color: '#DC2626',
+    cursor: 'pointer', fontFamily: 'inherit',
+  },
   radioGroup: { display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '12px' },
   radioLabel: { display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', cursor: 'pointer', fontSize: 'var(--font-size-sm)', transition: 'all var(--transition-fast)' },
   radioActive: { borderColor: 'var(--color-primary)', background: 'rgba(99,102,241,0.08)' },

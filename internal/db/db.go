@@ -29,16 +29,39 @@ func Open(basePath string) (*sql.DB, error) {
 	return conn, nil
 }
 
+const nowMillis = "strftime('%Y-%m-%dT%H:%M:%f', 'now')"
+
 func migrate(db *sql.DB) error {
+	// Drop old tables (clean migration strategy).
+	db.Exec(`DROP TABLE IF EXISTS clipboard`)
+	db.Exec(`DROP TABLE IF EXISTS clipboard_entry`)
+	db.Exec(`DROP TABLE IF EXISTS clipboard_format`)
+
+	// ` || nowMillis || ` injects the expression for DEFAULT values.
 	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS clipboard (
+		CREATE TABLE IF NOT EXISTS clipboard_entry (
 			id           INTEGER PRIMARY KEY AUTOINCREMENT,
 			content_hash TEXT NOT NULL UNIQUE,
-			content      TEXT NOT NULL,
-			created_at   DATETIME NOT NULL DEFAULT (datetime('now')),
-			updated_at   DATETIME NOT NULL DEFAULT (datetime('now'))
+			source_exe   TEXT NOT NULL DEFAULT '',
+			source_title TEXT NOT NULL DEFAULT '',
+			tag_mask     INTEGER NOT NULL DEFAULT 0,
+			created_at   TEXT NOT NULL DEFAULT (` + nowMillis + `),
+			updated_at   TEXT NOT NULL DEFAULT (` + nowMillis + `)
 		);
-		CREATE INDEX IF NOT EXISTS idx_clipboard_updated_at ON clipboard(updated_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_entry_updated_at ON clipboard_entry(updated_at DESC, id DESC);
+
+		CREATE TABLE IF NOT EXISTS clipboard_format (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			entry_id    INTEGER NOT NULL REFERENCES clipboard_entry(id) ON DELETE CASCADE,
+			format_type INTEGER NOT NULL,
+			content     TEXT,
+			file_path   TEXT,
+			format_hash TEXT NOT NULL,
+			UNIQUE(entry_id, format_type)
+		);
+		CREATE INDEX IF NOT EXISTS idx_format_entry ON clipboard_format(entry_id);
+
+		PRAGMA foreign_keys = ON;
 	`)
 	return err
 }

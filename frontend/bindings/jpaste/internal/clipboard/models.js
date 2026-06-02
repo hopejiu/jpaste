@@ -7,7 +7,115 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
- * Entry represents a clipboard history item.
+ * CapturedData bundles everything captured from one clipboard change.
+ */
+export class CapturedData {
+    /**
+     * Creates a new CapturedData instance.
+     * @param {Partial<CapturedData>} [$$source = {}] - The source object to create the CapturedData.
+     */
+    constructor($$source = {}) {
+        if (!("Formats" in $$source)) {
+            /**
+             * @member
+             * @type {CapturedFormat[]}
+             */
+            this["Formats"] = [];
+        }
+        if (!("SourceEXE" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["SourceEXE"] = "";
+        }
+        if (!("SourceTitle" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["SourceTitle"] = "";
+        }
+        if (!("PrimaryHash" in $$source)) {
+            /**
+             * SHA-256 of CF_UNICODETEXT, or image bytes if text is absent
+             * @member
+             * @type {string}
+             */
+            this["PrimaryHash"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CapturedData instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {CapturedData}
+     */
+    static createFrom($$source = {}) {
+        const $$createField0_0 = $$createType1;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("Formats" in $$parsedSource) {
+            $$parsedSource["Formats"] = $$createField0_0($$parsedSource["Formats"]);
+        }
+        return new CapturedData(/** @type {Partial<CapturedData>} */($$parsedSource));
+    }
+}
+
+/**
+ * CapturedFormat is a raw format payload read from the system clipboard.
+ */
+export class CapturedFormat {
+    /**
+     * Creates a new CapturedFormat instance.
+     * @param {Partial<CapturedFormat>} [$$source = {}] - The source object to create the CapturedFormat.
+     */
+    constructor($$source = {}) {
+        if (!("FormatType" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["FormatType"] = 0;
+        }
+        if (!("Text" in $$source)) {
+            /**
+             * non-empty for text formats (CF_UNICODETEXT, CF_HTML, etc.)
+             * @member
+             * @type {string}
+             */
+            this["Text"] = "";
+        }
+        if (!("RawData" in $$source)) {
+            /**
+             * non-nil for binary formats (CF_DIB / CF_DIBV5)
+             * @member
+             * @type {string}
+             */
+            this["RawData"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new CapturedFormat instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {CapturedFormat}
+     */
+    static createFrom($$source = {}) {
+        const $$createField2_0 = $Create.ByteSlice;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("RawData" in $$parsedSource) {
+            $$parsedSource["RawData"] = $$createField2_0($$parsedSource["RawData"]);
+        }
+        return new CapturedFormat(/** @type {Partial<CapturedFormat>} */($$parsedSource));
+    }
+}
+
+/**
+ * Entry is the JSON-serializable clipboard history item sent to the frontend.
  */
 export class Entry {
     /**
@@ -31,10 +139,32 @@ export class Entry {
         }
         if (!("content" in $$source)) {
             /**
+             * CF_UNICODETEXT for backward compat
              * @member
              * @type {string}
              */
             this["content"] = "";
+        }
+        if (!("source_exe" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["source_exe"] = "";
+        }
+        if (!("source_title" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["source_title"] = "";
+        }
+        if (!("formats" in $$source)) {
+            /**
+             * @member
+             * @type {FormatEntry[]}
+             */
+            this["formats"] = [];
         }
         if (!("created_at" in $$source)) {
             /**
@@ -60,7 +190,62 @@ export class Entry {
      * @returns {Entry}
      */
     static createFrom($$source = {}) {
+        const $$createField5_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("formats" in $$parsedSource) {
+            $$parsedSource["formats"] = $$createField5_0($$parsedSource["formats"]);
+        }
         return new Entry(/** @type {Partial<Entry>} */($$parsedSource));
     }
 }
+
+/**
+ * FormatEntry is one format payload within a clipboard entry.
+ */
+export class FormatEntry {
+    /**
+     * Creates a new FormatEntry instance.
+     * @param {Partial<FormatEntry>} [$$source = {}] - The source object to create the FormatEntry.
+     */
+    constructor($$source = {}) {
+        if (!("format_type" in $$source)) {
+            /**
+             * @member
+             * @type {number}
+             */
+            this["format_type"] = 0;
+        }
+        if (!("content" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["content"] = "";
+        }
+        if (!("file_path" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["file_path"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new FormatEntry instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {FormatEntry}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new FormatEntry(/** @type {Partial<FormatEntry>} */($$parsedSource));
+    }
+}
+
+// Private type creation functions
+const $$createType0 = CapturedFormat.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = FormatEntry.createFrom;
+const $$createType3 = $Create.Array($$createType2);

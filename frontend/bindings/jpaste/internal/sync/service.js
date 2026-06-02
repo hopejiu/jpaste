@@ -16,7 +16,6 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
- * GetConfig returns the current WebDAV config (password masked).
  * @returns {$CancellablePromise<$models.Config>}
  */
 export function GetConfig() {
@@ -26,7 +25,6 @@ export function GetConfig() {
 }
 
 /**
- * PullSettings downloads settings from WebDAV.
  * @returns {$CancellablePromise<string>}
  */
 export function PullSettings() {
@@ -36,7 +34,6 @@ export function PullSettings() {
 }
 
 /**
- * PushEntry enqueues a clipboard entry for upload.
  * @param {$models.PushInput} input
  * @returns {$CancellablePromise<void>}
  */
@@ -45,7 +42,6 @@ export function PushEntry(input) {
 }
 
 /**
- * PushSettings uploads settings to WebDAV.
  * @param {string} data
  * @returns {$CancellablePromise<void>}
  */
@@ -54,7 +50,6 @@ export function PushSettings(data) {
 }
 
 /**
- * SaveConfig persists the WebDAV config and reconnects.
  * @param {$models.Config} c
  * @returns {$CancellablePromise<void>}
  */
@@ -63,7 +58,6 @@ export function SaveConfig(c) {
 }
 
 /**
- * TestConnection verifies the WebDAV server is reachable.
  * @param {$models.Config} c
  * @returns {$CancellablePromise<void>}
  */

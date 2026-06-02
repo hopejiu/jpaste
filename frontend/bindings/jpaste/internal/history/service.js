@@ -21,25 +21,31 @@ import * as $models from "./models.js";
 
 /**
  * CaptureEntry persists or deduplicates a clipboard entry.
- * Returns the new entry (if inserted) and whether a new row was created.
- * @param {string} text
- * @param {string} hash
+ * @param {clipboard$0.CapturedData} data
  * @returns {$CancellablePromise<[clipboard$0.Entry | null, boolean]>}
  */
-export function CaptureEntry(text, hash) {
-    return $Call.ByID(3907808002, text, hash).then(/** @type {($result: any) => any} */(($result) => {
+export function CaptureEntry(data) {
+    return $Call.ByID(3907808002, data).then(/** @type {($result: any) => any} */(($result) => {
         $result[0] = $$createType1($result[0]);
         return $result;
     }));
 }
 
 /**
- * Cleanup removes entries older than the specified number of days.
+ * Cleanup removes entries older than retainDays and their image files.
  * @param {number} retainDays
  * @returns {$CancellablePromise<number>}
  */
 export function Cleanup(retainDays) {
     return $Call.ByID(4117285412, retainDays);
+}
+
+/**
+ * ClearAll deletes all clipboard entries and their image files.
+ * @returns {$CancellablePromise<void>}
+ */
+export function ClearAll() {
+    return $Call.ByID(706678788);
 }
 
 /**
@@ -52,15 +58,28 @@ export function DeleteEntry(id) {
 }
 
 /**
- * GetHistory returns clipboard entries matching the optional search string,
- * ordered by updated_at descending. Limit 200.
+ * GetHistory returns entries with cursor-based pagination and tag filtering.
+ * tagMask=0 means all, afterUpdatedAt="" means first page.
  * @param {string} search
- * @returns {$CancellablePromise<clipboard$0.Entry[]>}
+ * @param {number} tagMask
+ * @param {string} afterUpdatedAt
+ * @param {number} afterID
+ * @returns {$CancellablePromise<[clipboard$0.Entry[], boolean]>}
  */
-export function GetHistory(search) {
-    return $Call.ByID(2097755524, search).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType2($result);
+export function GetHistory(search, tagMask, afterUpdatedAt, afterID) {
+    return $Call.ByID(2097755524, search, tagMask, afterUpdatedAt, afterID).then(/** @type {($result: any) => any} */(($result) => {
+        $result[0] = $$createType2($result[0]);
+        return $result;
     }));
+}
+
+/**
+ * GetImageDataURL returns a base64 data URL for the first image format of an entry.
+ * @param {number} entryID
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetImageDataURL(entryID) {
+    return $Call.ByID(2477571378, entryID);
 }
 
 /**
@@ -74,7 +93,7 @@ export function GetStats() {
 }
 
 /**
- * UseEntry performs the default action (copy or paste) and refreshes updated_at.
+ * UseEntry performs the default action and refreshes updated_at.
  * @param {number} id
  * @param {string} action
  * @returns {$CancellablePromise<void>}

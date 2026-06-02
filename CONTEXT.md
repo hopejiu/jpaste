@@ -5,10 +5,42 @@ A Windows clipboard manager built with Wails v3 + React.
 ## Domain Terms
 
 ### Clipboard Entry
-A single text record copied to the system clipboard. Uniquely identified by `content_hash` (SHA-256 of trimmed content). Fields: `id`, `content_hash`, `content`, `created_at`, `updated_at`.
+A single copy operation captured from the system clipboard. Each entry is uniquely identified by `content_hash` — the SHA-256 of the trimmed `CF_UNICODETEXT` content. For image-only copies (no text), the hash is computed from the raw image bytes instead.
+
+Each entry records the **source application** (`source_exe`, `source_title`), its content as one or more **Clipboard Format** payloads in the format sub-table, and a **Tag Mask** (`tag_mask`) computed at capture time for list filtering.
+
+### Clipboard Format
+A format-specific payload attached to a **Clipboard Entry**. Windows supports multiple formats per clipboard operation — an entry may have `CF_UNICODETEXT` (plain text), `CF_HTML` (rich HTML), `CF_RTF`, and `CF_DIB` (image) simultaneously.
+
+Text-based formats (`CF_UNICODETEXT`, `CF_HTML`, `CF_RTF`, `CF_HDROP`) are stored inline as TEXT. Image formats (`CF_DIB`, `CF_DIBV5`) are saved to the **Image Store** with only the file path stored in the database. Each format has its own `format_hash` for integrity.
+
+### Clipboard Source
+The application that wrote the current clipboard content. Captured via `GetClipboardOwner()` → `GetWindowThreadProcessId()` → `OpenProcess()` + `QueryFullProcessImageName()` to record the full executable path, plus `GetWindowText()` for the window title at time of copy. NULL owner (clipboard cleared or cross-session) stores empty strings.
+
+### Image Store
+An external file directory at `%APPDATA%/jPaste/images/{YYYY-MM-DD}/` for storing clipboard image payloads. Organized by date folders for easy cleanup — when expired entries are deleted, the corresponding date folders and image files are removed together. Images are excluded from WebDAV sync.
+
+### Entry Tag
+A classification label assigned to a **Clipboard Entry** at capture time. Tags are determined by a mixed strategy: **format-driven** (which clipboard formats are present) and **content-driven** (pattern matching on the text payload). An entry can carry multiple tags simultaneously — e.g., a browser URL copy carries both `url` and `text`.
+
+The six tags:
+
+| Tag | Bit | Determination |
+|-----|-----|---------------|
+| `text` | 1 | Has `CF_UNICODETEXT` and no image / rich-text / file-path formats |
+| `rich_text` | 2 | Has `CF_HTML` or `CF_RTF` |
+| `image` | 4 | Has `CF_DIB` or `CF_DIBV5` |
+| `url` | 8 | `CF_UNICODETEXT` starts with `http://` or `https://` |
+| `file` | 16 | Has `CF_HDROP`, or text matches Windows path pattern (`[A-Z]:\` or `\\`) |
+
+### Tag Mask
+A bitmask stored on `clipboard_entry.tag_mask` (INTEGER) encoding an entry's **Entry Tags**. Multiple tags are combined via bitwise OR (e.g., a URL copy: `1 | 8 = 9`). The list page filters by passing a `tagMask` to `GetHistory`; the backend uses `tag_mask & tagMask != 0` for matching. A `tagMask` of 0 means "no filter" (show all).
+
+### Cursor Pagination
+The list page loads entries in pages of 20 via cursor-based pagination using a compound cursor `(updated_at, id)`. Each `GetHistory` call passes two cursor values from the last-seen entry. The backend queries `WHERE (updated_at < ? OR (updated_at = ? AND id < ?)) ORDER BY updated_at DESC, id DESC LIMIT 21` and returns whether more pages exist (`hasMore`). First-page requests use zero-value cursors. Timestamps are stored at **millisecond precision** (`strftime('%Y-%m-%dT%H:%M:%f', 'now')`) to minimize same-second collisions.
 
 ### Deduplication
-When a new clipboard content is detected, it is hashed. If the hash matches an existing entry, the existing entry's `updated_at` is refreshed — no duplicate inserted. The entry moves to the top of the history list.
+When new clipboard content is detected, the `CF_UNICODETEXT` payload is trimmed and hashed (SHA-256). If the hash matches an existing entry, the existing entry's `updated_at` is refreshed and new format payloads are upserted — no duplicate entry inserted. For image-only copies, the image binary hash serves as the identity key. Deduplication only compares the primary format — additional format changes (e.g. same text with different HTML) do not create new entries.
 
 ### Default Action
 The action executed when a user selects a clipboard entry (click or `Ctrl+Digit`). Configurable in settings: **Copy** (write to clipboard, hide window) or **Paste** (write to clipboard, switch focus to previous window, simulate `Ctrl+V`).
@@ -32,9 +64,9 @@ Bidirectional merge of clipboard entries and settings across machines via WebDAV
 
 **Merge Rule**: `content_hash` is the identity key. When a local entry and its remote counterpart exist, keep the one with the later `updated_at`. Local entries not on remote are pushed; remote entries not in local are pulled (subject to `retain_days` filter).
 
-**Push**: On each clipboard change, the new/updated entry is `PUT` immediately. Failure triggers exponential backoff (1min → 2min → 4min → ...). During push, entries on WebDAV older than `retain_days` are deleted — since `retain_days` is shared via settings sync, both machines agree on the deletion boundary.
+**Push**: On each clipboard change, the new/updated entry is `PUT` immediately. Failure triggers exponential backoff (1min → 2min → 4min → ...). During push, entries on WebDAV older than `retain_days` are deleted — since `retain_days` is shared via settings sync, both machines agree on the deletion boundary. Only text-based formats are synced; image formats are excluded.
 
-**Pull**: Every 60 seconds, a `PROPFIND` on the `entries/` directory lists remote files with `getlastmodified`. Each is compared against local SQLite by `content_hash` + `updated_at`. Only new or changed entries are `GET`-downloaded and upserted. Settings are only pulled once at startup, not on the periodic cycle.
+**Pull**: Every 60 seconds, a `PROPFIND` on the `entries/` directory lists remote files with `getlastmodified`. Each is compared against local SQLite by `content_hash` + `updated_at`. Only new or changed entries are `GET`-downloaded and upserted. Settings are only pulled once at startup, not on the periodic cycle. Image formats are local-only and never pulled.
 
 **WebDAV Credentials**: Stored in `%APPDATA%/jPaste/webdav.json` (URL, username, app password). Not synced — each machine configures its own.
 
@@ -56,10 +88,12 @@ Bidirectional merge of clipboard entries and settings across machines via WebDAV
 │  ┌──────────┐ ┌───────────────┐  │
 │  │Clipboard │ │ HistoryService│  │
 │  │ Service  │ │               │  │
-│  └──────────┘ └───────────────┘  │
-│  ┌──────────┐ ┌───────────────┐  │
-│  │Settings  │ │ FileService   │  │
-│  │ Service  │ │               │  │
+│  │(lxn/win) │ └───────────────┘  │
+│  └──────────┘ ┌───────────────┐  │
+│               │ ImageStore    │  │
+│  ┌──────────┐ └───────────────┘  │
+│  │Settings  │ ┌───────────────┐  │
+│  │ Service  │ │ FileService   │  │
 │  └──────────┘ └───────────────┘  │
 │  ┌──────────┐                    │
 │  │  Sync    │                    │
@@ -77,6 +111,9 @@ Bidirectional merge of clipboard entries and settings across machines via WebDAV
 ## Storage
 
 - **Clipboard history:** `%APPDATA%/jPaste/clipboard.db` (SQLite)
+  - `clipboard_entry`: id, content_hash, source_exe, source_title, tag_mask, created_at, updated_at
+  - `clipboard_format`: entry_id (FK), format_type, content (TEXT, nullable), file_path (nullable), format_hash
+- **Images:** `%APPDATA%/jPaste/images/{YYYY-MM-DD}/{uuid}.png` — excluded from sync
 - **User settings:** `%APPDATA%/jPaste/settings.json`
 
 ### Action Module
@@ -108,5 +145,7 @@ The six built-in action modules:
 - **Alt+V** shows/hides the window (Spotlight-like fade+scale animation)
 - **Lose focus** → auto-hide
 - **Window** starts hidden, first show on app launch
-- **Clipboard polling** every 1 second, active regardless of window visibility
+- **Clipboard monitoring** event-driven via `AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE` on a message-only window (no polling)
+- **List filtering** via tag tabs (全部 / 文本 / 富文本 / 图片 / 网址 / 文件) + keyword search, with cursor-based pagination (20 per page)
 - **Cleanup** removes entries older than configured retention period
+- **Clear All** — a button on the Settings page that deletes all clipboard entries and image files at once

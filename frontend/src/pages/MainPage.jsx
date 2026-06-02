@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Settings, X, Copy, ClipboardPaste, ExternalLink, Trash2 } from 'lucide-react'
-import { useClipboard } from '../context/ClipboardContext'
+import { Search, Settings, X, Copy, ClipboardPaste, ExternalLink, Trash2, Image, XCircle } from 'lucide-react'
+import { useClipboard, TAGS } from '../context/ClipboardContext'
 import { Service as FileService } from '../../bindings/jpaste/internal/fileop'
+import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
 import { getById } from '../actions'
 import { useActionDetection } from '../hooks/useActionDetection'
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation'
@@ -13,10 +14,22 @@ import ActionButtons from '../components/ActionButtons'
 import ActionModal from '../components/ActionModal'
 import { styles } from './MainPage.styles'
 
+const CF_DIB = 8
+const CF_DIBV5 = 17
+
+const isImageEntry = (entry) => entry.formats?.some(f => f.format_type === CF_DIB || f.format_type === CF_DIBV5)
+const isImageOnly = (entry) => entry.formats?.length > 0 && entry.formats.every(f => f.format_type === CF_DIB || f.format_type === CF_DIBV5)
+
 export default function MainPage() {
-  const { entries, search, setSearch, useEntry, deleteEntry, settings, syncStatus } = useClipboard()
+  const {
+    entries, search, setSearch,
+    activeTag, setActiveTag,
+    hasMore, loading, loadMore,
+    useEntry, deleteEntry, settings, syncStatus,
+  } = useClipboard()
   const [focusedIdx, setFocusedIdx] = useState(-1)
   const [modal, setModal] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null) // { url, loading }
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const navigate = useNavigate()
@@ -46,6 +59,19 @@ export default function MainPage() {
     return () => window.removeEventListener('focus', handler)
   }, [])
 
+  // Infinite scroll.
+  useEffect(() => {
+    const list = listRef.current
+    if (!list) return
+    const onScroll = () => {
+      if (list.scrollHeight - list.scrollTop - list.clientHeight < 120) {
+        loadMore()
+      }
+    }
+    list.addEventListener('scroll', onScroll, { passive: true })
+    return () => list.removeEventListener('scroll', onScroll)
+  }, [loadMore])
+
   // Scroll focused item into view.
   useEffect(() => {
     if (focusedIdx >= 0 && listRef.current) {
@@ -70,6 +96,19 @@ export default function MainPage() {
 
   const handleActionClick = useCallback((actionId, entry) => {
     setModal({ actionId, entry })
+  }, [])
+
+  const handleImageClick = useCallback(async (entry) => {
+    console.log('[MainPage] handleImageClick entry.id=%d', entry.id)
+    setImagePreview({ url: '', loading: true })
+    try {
+      const url = await HistoryService.GetImageDataURL(entry.id)
+      console.log('[MainPage] GetImageDataURL returned url.length=%d', url?.length)
+      setImagePreview({ url, loading: false })
+    } catch (err) {
+      console.error('[MainPage] Failed to load image:', err)
+      setImagePreview(null)
+    }
   }, [])
 
   const modalAction = modal ? getById(modal.actionId) : null
@@ -104,9 +143,26 @@ export default function MainPage() {
         </button>
       </div>
 
+      {/* Tag Tabs */}
+      <div style={styles.tabBar}>
+        {TAGS.map(tag => (
+          <button
+            key={tag.id}
+            style={{
+              ...styles.tab,
+              ...(activeTag === tag.id ? styles.tabActive : {}),
+            }}
+            onClick={(e) => { setActiveTag(tag.id); setFocusedIdx(-1); e.currentTarget.blur() }}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {tag.label}
+          </button>
+        ))}
+      </div>
+
       {/* List */}
       <div style={styles.list} ref={listRef}>
-        {entries.length === 0 ? (
+        {entries.length === 0 && !loading ? (
           <div style={styles.empty}>
             <p style={styles.emptyTitle}>{search ? '无匹配记录' : '暂无剪贴板历史'}</p>
             <p style={styles.emptyDesc}>
@@ -119,28 +175,46 @@ export default function MainPage() {
             const shortcut = idx < 9 ? `Ctrl+${idx + 1}` : null
             const time = formatTime(entry.updated_at)
             const detectedActions = detectedMap[entry.id]
+            const hasImg = isImageEntry(entry)
+            const imgOnly = isImageOnly(entry)
+
             return (
               <div
                 key={entry.id}
                 ref={(el) => observeItem(el, entry.id, entry.content)}
                 style={{ ...styles.item, ...(isFocused ? styles.itemFocused : {}) }}
                 onMouseEnter={() => setFocusedIdx(idx)}
-                onClick={() => useEntry(entry.id, settings.default_action)}
+                onClick={() => {
+                  if (imgOnly) { handleImageClick(entry); return }
+                  useEntry(entry.id, settings.default_action)
+                }}
                 onContextMenu={(e) => showCtxMenu(e, entry)}
               >
                 {shortcut && <div style={styles.shortcut}>{idx + 1}</div>}
 
                 <div style={styles.itemContent}>
-                  <div style={styles.itemText}>{previewContent(entry.content)}</div>
+                  {imgOnly ? (
+                    <div style={styles.itemImagePlaceholder}>
+                      <Image size={20} />
+                      <span style={styles.itemImageLabel}>图片</span>
+                    </div>
+                  ) : (
+                    <div style={styles.itemText}>
+                      {previewContent(entry.content)}
+                      {hasImg && <Image size={14} style={{ marginLeft: 6, opacity: 0.4, verticalAlign: 'middle' }} />}
+                    </div>
+                  )}
                   <div style={styles.itemMeta}>
                     <span style={styles.itemTime}>
                       <span style={styles.itemRel}>{time.rel}</span>
                       <span style={styles.itemAbs}>{time.abs}</span>
                     </span>
-                    <ActionButtons
-                      actionIds={detectedActions}
-                      onClick={(actionId) => handleActionClick(actionId, entry)}
-                    />
+                    {!imgOnly && (
+                      <ActionButtons
+                        actionIds={detectedActions}
+                        onClick={(actionId) => handleActionClick(actionId, entry)}
+                      />
+                    )}
                     <button
                       style={styles.actionBtn}
                       onClick={(e) => { e.stopPropagation(); useEntry(entry.id, 'copy') }}
@@ -148,19 +222,23 @@ export default function MainPage() {
                     >
                       <Copy size={14} />
                     </button>
-                    <button
-                      style={styles.actionBtn}
-                      onClick={(e) => { e.stopPropagation(); useEntry(entry.id, 'paste') }}
-                      title="粘贴"
-                    >
-                      <ClipboardPaste size={14} />
-                    </button>
+                    {!imgOnly && (
+                      <button
+                        style={styles.actionBtn}
+                        onClick={(e) => { e.stopPropagation(); useEntry(entry.id, 'paste') }}
+                        title="粘贴"
+                      >
+                        <ClipboardPaste size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
             )
           })
         )}
+        {loading && <div style={styles.loading}>加载中...</div>}
+        {hasMore && !loading && <div style={styles.loading}>向下滚动加载更多</div>}
       </div>
 
       {/* Footer */}
@@ -187,14 +265,35 @@ export default function MainPage() {
       {/* Context Menu */}
       {ctxMenu && (
         <div style={{ ...styles.ctxOverlay, left: ctxMenu.x, top: ctxMenu.y }}>
-          <div style={styles.ctxItem} onClick={() => handleOpenEditor(ctxMenu.entry.id)}>
-            <ExternalLink size={14} />
-            <span>在编辑器中打开</span>
-          </div>
+          {!isImageOnly(ctxMenu.entry) && (
+            <div style={styles.ctxItem} onClick={() => handleOpenEditor(ctxMenu.entry.id)}>
+              <ExternalLink size={14} />
+              <span>在编辑器中打开</span>
+            </div>
+          )}
           <div style={styles.ctxItemDanger} onClick={() => handleDelete(ctxMenu.entry)}>
             <Trash2 size={14} />
             <span>删除</span>
           </div>
+        </div>
+      )}
+
+      {/* Image Preview Overlay */}
+      {imagePreview && (
+        <div style={styles.imgOverlay} onClick={() => setImagePreview(null)}>
+          <button style={styles.imgClose} onClick={() => setImagePreview(null)}>
+            <XCircle size={24} />
+          </button>
+          {imagePreview.loading ? (
+            <div style={styles.imgLoading}>加载中...</div>
+          ) : (
+            <img
+              src={imagePreview.url}
+              alt="clipboard"
+              style={styles.imgPreview}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
         </div>
       )}
     </div>

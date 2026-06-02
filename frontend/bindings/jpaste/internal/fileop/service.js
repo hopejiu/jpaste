@@ -12,17 +12,8 @@
 import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 /**
- * OpenFileLocation opens the folder containing the file path and selects the file.
- * @param {number} id
- * @returns {$CancellablePromise<void>}
- */
-export function OpenFileLocation(id) {
-    return $Call.ByID(1444465364, id);
-}
-
-/**
- * OpenInEditor creates a temp .txt file and opens it in the preferred editor.
- * Tries VS Code first, then falls back to the system default .txt handler.
+ * OpenInEditor writes the entry's text content to a temp file and opens it
+ * in VS Code (if available) or the system default .txt handler.
  * @param {number} id
  * @returns {$CancellablePromise<void>}
  */
@@ -31,10 +22,12 @@ export function OpenInEditor(id) {
 }
 
 /**
- * OpenInExplorer opens the folder path contained in a clipboard entry in Windows Explorer.
+ * OpenInExplorer opens the folder containing the entry in Explorer.
+ * If the entry content is a valid path format, it opens that path directly.
  * @param {number} id
+ * @param {boolean} selectFile
  * @returns {$CancellablePromise<void>}
  */
-export function OpenInExplorer(id) {
-    return $Call.ByID(21819145, id);
+export function OpenInExplorer(id, selectFile) {
+    return $Call.ByID(21819145, id, selectFile);
 }

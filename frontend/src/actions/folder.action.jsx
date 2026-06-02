@@ -13,11 +13,7 @@ function FolderModal({ content, entryId, onClose }) {
 
   const open = async () => {
     try {
-      if (isFile) {
-        await FileService.OpenFileLocation(entryId)
-      } else {
-        await FileService.OpenInExplorer(entryId)
-      }
+      await FileService.OpenInExplorer(entryId, isFile)
       onClose()
     } catch (e) {
       console.error('Failed to open:', e)

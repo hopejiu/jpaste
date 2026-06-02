@@ -3,8 +3,11 @@ module jpaste
 go 1.25.0
 
 require (
+	github.com/google/uuid v1.6.0
+	github.com/lxn/win v0.0.0-20210218163916-a377121e959e
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.97
 	golang.design/x/hotkey v0.4.1
+	golang.org/x/image v0.41.0
 	modernc.org/sqlite v1.51.0
 )
 
@@ -25,7 +28,6 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect

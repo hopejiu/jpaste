@@ -32,20 +32,20 @@ var assets embed.FS
 //go:embed paste.png
 var trayIcon []byte
 
-// lockFilePath is set by acquireSingleton(); cleaned on exit via releaseLockFile().
 var lockFilePath string
 
-// AppHandle bundles all app-level dependencies that services need.
-// Wire() is called once after the Wails app is created.
+// AppHandle bundles app-level dependencies that services need.
 type AppHandle struct{ app *application.App }
 
-func (h *AppHandle) ReadClipboard() (string, bool) { return h.app.Clipboard.Text() }
-func (h *AppHandle) SetText(s string) bool          { return h.app.Clipboard.SetText(s) }
-func (h *AppHandle) Emit(name string, data any)    { h.app.Event.Emit(name, data) }
-func (h *AppHandle) Wire(a *application.App)       { h.app = a }
+func (h *AppHandle) Emit(name string, data any) { h.app.Event.Emit(name, data) }
+func (h *AppHandle) Wire(a *application.App)    { h.app = a }
+
+// clipboardImpl delegates to lxn/win WriteText.
+type clipboardImpl struct{}
+
+func (c clipboardImpl) SetText(text string) bool { return clipboard.WriteText(text) }
 
 func main() {
-	// Single-instance guard using lock file + PID check.
 	appData := filepath.Join(os.Getenv("APPDATA"), "jPaste")
 	if !acquireLock(appData) {
 		log.Println("another instance is already running, exiting")
@@ -66,17 +66,20 @@ func main() {
 	}
 
 	handle := &AppHandle{}
-	doPaste := func() {} // wired after window creation
+	doPaste := func() {}
 
-	// Sync service (WebDAV) — declared first so histSvc closure can capture it.
+	// Image store for clipboard images.
+	imageStore := clipboard.NewImageStore(appData)
+
+	// Sync service (WebDAV).
 	syncSvc := sync.NewService(appData, conn, sett, func(name string, data any) {
 		if handle.app != nil {
 			handle.Emit(name, data)
 		}
 	})
 
-	// Build history service with capture pipeline hooks.
-	histSvc := history.NewService(conn, handle,
+	// History service with capture pipeline hooks.
+	histSvc := history.NewService(conn, clipboardImpl{},
 		history.WithPasteFunc(func() { doPaste() }),
 		history.WithEmitFunc(func(name string, data any) { handle.Emit(name, data) }),
 		history.WithNotifyFunc(func(title, msg string) {
@@ -84,16 +87,20 @@ func main() {
 				notify.ShowToast(title, msg)
 			}
 		}),
-		history.WithSyncPushFunc(func(hash, content string) {
-			syncSvc.PushEntry(sync.PushInput{ContentHash: hash, Content: content})
+		history.WithSyncPushFunc(func(hash string, formats []history.SyncFormat) {
+			syncSvc.PushEntry(sync.PushInput{ContentHash: hash, Formats: formats})
 		}),
+		history.WithImageStore(imageStore),
 	)
 
-	// File-manager function wired after app creation.
+	// File-manager function (wired after app creation).
 	var openFileManagerFn func(string, bool) error
 	fileSvc := fileop.NewService(func(id int64) (string, error) {
 		var c string
-		err := conn.QueryRow(`SELECT content FROM clipboard WHERE id = ?`, id).Scan(&c)
+		err := conn.QueryRow(
+			`SELECT COALESCE(f.content, '') FROM clipboard_format f WHERE f.entry_id = ? AND f.format_type = 13`,
+			id,
+		).Scan(&c)
 		return c, err
 	}, fileop.WithOpenFileManager(func(path string, selectFile bool) error {
 		if openFileManagerFn == nil {
@@ -102,11 +109,10 @@ func main() {
 		return openFileManagerFn(path, selectFile)
 	}))
 
-	// Pull remote settings on startup. Only apply if different from local.
+	// Pull remote settings on startup.
 	if remoteSettings, err := syncSvc.PullSettings(); err == nil && remoteSettings != nil {
 		var remote settings.Data
 		if err := json.Unmarshal(remoteSettings, &remote); err == nil {
-			// Compare: marshal local to detect real differences (avoids RawMessage compare issue).
 			localJSON, _ := json.Marshal(sett.GetSettings())
 			if !bytes.Equal(remoteSettings, localJSON) {
 				sett.SaveSettings(remote)
@@ -119,15 +125,18 @@ func main() {
 		log.Printf("sync: pull settings startup: %v", err)
 	}
 
-	// Watcher callback delegates capture to history.Service.
-	watcher := clipboard.NewWatcher(handle.ReadClipboard, func(text, hash string) {
-		entry, isNew := histSvc.CaptureEntry(text, hash)
+	// Watcher — event-driven via WM_CLIPBOARDUPDATE.
+	watcher := clipboard.NewWatcher(func(data clipboard.CapturedData) {
+		log.Printf("[main] Capture callback: formats=%d hash=%s source=%q", len(data.Formats), data.PrimaryHash[:12], data.SourceEXE)
+		entry, isNew := histSvc.CaptureEntry(data)
 		if isNew {
-			log.Printf("new clipboard entry: %q", previewText(entry.Content))
+			log.Printf("[main] new clipboard entry: id=%d text=%q source=%s", entry.ID, previewText(entry.Content), entry.SourceEXE)
+		} else {
+			log.Printf("[main] dedup entry (hash=%s)", data.PrimaryHash[:12])
 		}
 	})
 
-	// Create Wails app with all services.
+	// Create Wails app.
 	app := application.New(application.Options{
 		Name:        "jPaste",
 		Description: "A modern clipboard manager for Windows",
@@ -141,35 +150,27 @@ func main() {
 		},
 	})
 
-	// Wire app handle now that app exists.
 	handle.Wire(app)
 
-	// Wire file-manager function (needs app handle).
 	openFileManagerFn = func(path string, selectFile bool) error {
 		return app.Env.OpenFileManager(path, selectFile)
 	}
 
-	// Create window (default visible for good UX).
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "jPaste", Width: 480, MinWidth: 360, Height: 560, MinHeight: 300,
 		Hidden: sett.GetSettings().StartMinimized, URL: "/",
 		BackgroundColour: application.NewRGB(248, 250, 252),
 	})
 
-	// Wire paste function (needs win reference).
 	doPaste = func() {
 		hideWindow(win)
 		time.Sleep(150 * time.Millisecond)
 		clipboard.Paste()
 	}
 
-	// System tray.
 	setupSystemTray(app, win)
-
-	// Global hotkey.
 	setupGlobalHotkey(win, sett)
 
-	// Window hooks.
 	win.RegisterHook(wailsEvent.Common.WindowClosing, func(e *application.WindowEvent) {
 		hideWindow(win)
 		e.Cancel()
@@ -178,21 +179,18 @@ func main() {
 		hideWindow(win)
 	})
 
-	// Startup tasks.
 	runCleanup(histSvc, sett)
 	if !sett.GetSettings().StartMinimized {
 		showWindow(win)
 	}
 	setupAutostart(app, sett)
 
-	// Real-time settings handlers.
 	sett.OnSettingsChange(func(old, new settings.Data) {
 		if new.AutoStart {
 			app.Autostart.Enable()
 		} else {
 			app.Autostart.Disable()
 		}
-		// Run local cleanup immediately when retain_days changes.
 		if old.RetainDays != new.RetainDays {
 			if n, err := histSvc.Cleanup(new.RetainDays); err != nil {
 				log.Printf("warn: cleanup on retain change: %v", err)
@@ -200,7 +198,6 @@ func main() {
 				log.Printf("cleaned up %d old entries (retain_days changed to %d)", n, new.RetainDays)
 			}
 		}
-		// Push settings to WebDAV.
 		if data, err := json.Marshal(new); err == nil {
 			syncSvc.PushSettings(data)
 		}
@@ -243,16 +240,17 @@ func setupGlobalHotkey(win application.Window, sett *settings.Service) {
 		if win.IsVisible() {
 			hideWindow(win)
 		} else {
-			win.EmitEvent(events.Navigate, "/") // always go to list page
+			win.EmitEvent(events.Navigate, "/")
 			showWindow(win)
 		}
 	}
 	register := func(keystr string) {
+		log.Printf("[main] Setting up global hotkey: %s", keystr)
 		hotkey.UnregisterAll()
 		if err := hotkey.Register(keystr, toggle); err != nil {
-			log.Printf("warn: register global hotkey %q: %v", keystr, err)
+			log.Printf("[main] WARN: register global hotkey %q: %v", keystr, err)
 		} else {
-			log.Printf("global hotkey registered: %s", keystr)
+			log.Printf("[main] global hotkey registered: %s", keystr)
 		}
 	}
 	register(sett.GetSettings().Hotkey)
@@ -276,8 +274,6 @@ func setupAutostart(app *application.App, sett *settings.Service) {
 	}
 }
 
-// --- Window helpers ---
-
 func showWindow(win application.Window) {
 	if win == nil {
 		return
@@ -297,8 +293,6 @@ func hideWindow(win application.Window) {
 	time.AfterFunc(200*time.Millisecond, func() { win.Hide() })
 }
 
-// --- Helpers ---
-
 func must[T any](val T, err error) T {
 	if err != nil {
 		log.Fatal(err)
@@ -313,42 +307,30 @@ func previewText(s string) string {
 	return s
 }
 
-// acquireLock creates a lock file with the current PID.
-// If a lock file already exists, checks whether the owning process is still alive.
-// Returns true if successfully acquired.
 func acquireLock(appData string) bool {
 	lockFilePath = filepath.Join(appData, "instance.lock")
-
-	// Ensure dir exists.
 	os.MkdirAll(appData, 0700)
-
-	// Try to read existing lock.
 	data, err := os.ReadFile(lockFilePath)
 	if err == nil {
 		if pid, parseErr := strconv.Atoi(string(data)); parseErr == nil && pid > 0 && isProcessAlive(pid) {
-			return false // lock is valid, another instance is running
+			return false
 		}
-		// Stale lock — remove and retry.
 		os.Remove(lockFilePath)
 	}
-
-	// Create exclusive lock file.
 	pid := os.Getpid()
 	if writeErr := os.WriteFile(lockFilePath, []byte(strconv.Itoa(pid)), 0600); writeErr != nil {
 		log.Printf("warn: write lock file: %v", writeErr)
-		return true // allow to run even if lock fails
+		return true
 	}
 	return true
 }
 
-// releaseLock removes the lock file.
 func releaseLock() {
 	if lockFilePath != "" {
 		os.Remove(lockFilePath)
 	}
 }
 
-// isProcessAlive checks if a Windows process with the given PID exists.
 func isProcessAlive(pid int) bool {
 	const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 	h, err := syscall.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
@@ -356,11 +338,10 @@ func isProcessAlive(pid int) bool {
 		return false
 	}
 	defer syscall.CloseHandle(h)
-
 	var exitCode uint32
 	err = syscall.GetExitCodeProcess(h, &exitCode)
 	if err != nil {
 		return false
 	}
-	return exitCode == 259 // STILL_ACTIVE
+	return exitCode == 259
 }
