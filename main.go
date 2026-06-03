@@ -5,7 +5,6 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"jpaste/internal/fileop"
 	"jpaste/internal/history"
 	"jpaste/internal/hotkey"
+	applog "jpaste/internal/log"
 	"jpaste/internal/notify"
 	"jpaste/internal/settings"
 	"jpaste/internal/sync"
@@ -33,6 +33,7 @@ var assets embed.FS
 var trayIcon []byte
 
 var lockFilePath string
+var quitting bool
 
 // AppHandle bundles app-level dependencies that services need.
 type AppHandle struct{ app *application.App }
@@ -43,19 +44,23 @@ func (h *AppHandle) Wire(a *application.App)    { h.app = a }
 // clipboardImpl delegates to clipboard package functions.
 type clipboardImpl struct{}
 
-func (c clipboardImpl) SetText(text string) bool   { return clipboard.WriteText(text) }
-func (c clipboardImpl) SetImage(dib []byte) bool    { return clipboard.WriteImage(dib) }
+func (c clipboardImpl) SetText(text string) bool    { return clipboard.WriteText(text) }
+func (c clipboardImpl) SetImage(dib []byte) bool     { return clipboard.WriteImage(dib) }
 func (c clipboardImpl) SetFiles(paths []string) bool { return clipboard.WriteFilePaths(paths) }
 
 func main() {
 	appData := filepath.Join(os.Getenv("APPDATA"), "jPaste")
+	if err := applog.Init(appData); err != nil {
+		fmt.Fprintf(os.Stderr, "init logging: %v\n", err)
+	}
 	if !acquireLock(appData) {
-		log.Println("another instance is already running, exiting")
+		applog.Info("another instance is already running, exiting")
 		return
 	}
 	defer releaseLock()
 	if err := os.MkdirAll(appData, 0700); err != nil {
-		log.Fatalf("create app data dir: %v", err)
+		applog.Error("create app data dir", "error", err)
+		os.Exit(1)
 	}
 
 	// Bootstrap: storage + settings.
@@ -64,7 +69,7 @@ func main() {
 
 	sett := settings.NewService(appData)
 	if err := sett.Load(); err != nil {
-		log.Printf("warn: load settings: %v", err)
+		applog.Warn("load settings", "error", err)
 	}
 
 	handle := &AppHandle{}
@@ -100,7 +105,6 @@ func main() {
 	var openFileManagerFn func(string, bool) error
 	fileSvc := fileop.NewService(func(id int64) (string, error) {
 		var c string
-		// Try CF_UNICODETEXT first, then CF_HDROP for file entries.
 		err := conn.QueryRow(
 			`SELECT COALESCE(f.content, '') FROM clipboard_format f WHERE f.entry_id = ? AND f.format_type = 13`,
 			id,
@@ -126,23 +130,23 @@ func main() {
 			localJSON, _ := json.Marshal(sett.GetSettings())
 			if !bytes.Equal(remoteSettings, localJSON) {
 				sett.SaveSettings(remote)
-				log.Printf("sync: applied remote settings on startup (retain=%d)", remote.RetainDays)
+				applog.Info("sync: applied remote settings on startup", "retain", remote.RetainDays)
 			} else {
-				log.Println("sync: remote settings identical, skipped")
+				applog.Info("sync: remote settings identical, skipped")
 			}
 		}
 	} else if err != nil {
-		log.Printf("sync: pull settings startup: %v", err)
+		applog.Warn("sync: pull settings startup", "error", err)
 	}
 
 	// Watcher — event-driven via WM_CLIPBOARDUPDATE.
 	watcher := clipboard.NewWatcher(func(data clipboard.CapturedData) {
-		log.Printf("[main] Capture callback: formats=%d hash=%s source=%q", len(data.Formats), data.PrimaryHash[:12], data.SourceEXE)
+		applog.Info("capture callback", "formats", len(data.Formats), "hash", data.PrimaryHash[:12], "source", data.SourceEXE)
 		entry, isNew := histSvc.CaptureEntry(data)
 		if isNew {
-			log.Printf("[main] new clipboard entry: id=%d text=%q source=%s", entry.ID, previewText(entry.Content), entry.SourceEXE)
+			applog.Info("new clipboard entry", "id", entry.ID, "text", previewText(entry.Content), "source", entry.SourceEXE)
 		} else {
-			log.Printf("[main] dedup entry (hash=%s)", data.PrimaryHash[:12])
+			applog.Info("dedup entry", "hash", data.PrimaryHash[:12])
 		}
 	})
 
@@ -168,7 +172,7 @@ func main() {
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "jPaste", Width: 480, MinWidth: 360, Height: 560, MinHeight: 300,
-		Hidden: sett.GetSettings().StartMinimized, URL: "/",
+		Hidden: false, URL: "/",
 		BackgroundColour: application.NewRGB(248, 250, 252),
 	})
 
@@ -186,16 +190,27 @@ func main() {
 	setupGlobalHotkey(win, sett)
 
 	win.RegisterHook(wailsEvent.Common.WindowClosing, func(e *application.WindowEvent) {
+		if quitting {
+			applog.Info("WindowClosing: quitting=true, allowing close")
+			return
+		}
+		applog.Info("WindowClosing: hiding to tray")
 		hideWindow(win)
 		e.Cancel()
 	})
 	win.OnWindowEvent(wailsEvent.Common.WindowLostFocus, func(e *application.WindowEvent) {
+		applog.Info("WindowLostFocus: hiding")
 		hideWindow(win)
 	})
 
 	runCleanup(histSvc, sett)
-	if !sett.GetSettings().StartMinimized {
-		showWindow(win)
+	startMinimized := sett.GetSettings().StartMinimized
+	applog.Info("startup", "start_minimized", startMinimized)
+	if startMinimized {
+		time.AfterFunc(500*time.Millisecond, func() {
+			applog.Info("start_minimized: hiding window")
+			hideWindow(win)
+		})
 	}
 	setupAutostart(app, sett)
 
@@ -207,9 +222,9 @@ func main() {
 		}
 		if old.RetainDays != new.RetainDays {
 			if n, err := histSvc.Cleanup(new.RetainDays); err != nil {
-				log.Printf("warn: cleanup on retain change: %v", err)
+				applog.Warn("cleanup on retain change", "error", err)
 			} else if n > 0 {
-				log.Printf("cleaned up %d old entries (retain_days changed to %d)", n, new.RetainDays)
+				applog.Info("cleaned up old entries", "count", n, "retain_days", new.RetainDays)
 			}
 		}
 		if data, err := json.Marshal(new); err == nil {
@@ -220,8 +235,10 @@ func main() {
 	defer hotkey.UnregisterAll()
 	defer notify.Shutdown()
 	if err := app.Run(); err != nil {
-		log.Fatal(err)
+		applog.Error("app.Run", "error", err)
+		os.Exit(1)
 	}
+	applog.Info("app.Run returned, process exiting")
 }
 
 // --- Phase helpers ---
@@ -231,18 +248,28 @@ func setupSystemTray(app *application.App, win application.Window) {
 	tray.SetLabel("jPaste")
 	tray.SetIcon(trayIcon)
 	menu := app.Menu.New()
-	menu.Add("显示").OnClick(func(ctx *application.Context) { showWindow(win) })
+	menu.Add("显示").OnClick(func(ctx *application.Context) {
+		applog.Info("tray: 显示")
+		showWindow(win)
+	})
 	menu.Add("设置").OnClick(func(ctx *application.Context) {
+		applog.Info("tray: 设置")
 		win.EmitEvent(events.Navigate, "/settings")
 		showWindow(win)
 	})
 	menu.AddSeparator()
-	menu.Add("退出").OnClick(func(ctx *application.Context) { app.Quit() })
+	menu.Add("退出").OnClick(func(ctx *application.Context) {
+		applog.Info("tray: 退出")
+		quitting = true
+		app.Quit()
+	})
 	tray.SetMenu(menu)
 	tray.OnClick(func() {
 		if win.IsVisible() {
+			applog.Info("tray click: hiding")
 			hideWindow(win)
 		} else {
+			applog.Info("tray click: showing")
 			showWindow(win)
 		}
 	})
@@ -252,19 +279,21 @@ func setupSystemTray(app *application.App, win application.Window) {
 func setupGlobalHotkey(win application.Window, sett *settings.Service) {
 	toggle := func() {
 		if win.IsVisible() {
+			applog.Info("hotkey: hiding")
 			hideWindow(win)
 		} else {
+			applog.Info("hotkey: showing")
 			win.EmitEvent(events.Navigate, "/")
 			showWindow(win)
 		}
 	}
 	register := func(keystr string) {
-		log.Printf("[main] Setting up global hotkey: %s", keystr)
+		applog.Info("setting up global hotkey", "key", keystr)
 		hotkey.UnregisterAll()
 		if err := hotkey.Register(keystr, toggle); err != nil {
-			log.Printf("[main] WARN: register global hotkey %q: %v", keystr, err)
+			applog.Warn("register global hotkey", "key", keystr, "error", err)
 		} else {
-			log.Printf("[main] global hotkey registered: %s", keystr)
+			applog.Info("global hotkey registered", "key", keystr)
 		}
 	}
 	register(sett.GetSettings().Hotkey)
@@ -274,24 +303,26 @@ func setupGlobalHotkey(win application.Window, sett *settings.Service) {
 func runCleanup(histSvc *history.Service, sett *settings.Service) {
 	cfg := sett.GetSettings()
 	if n, err := histSvc.Cleanup(cfg.RetainDays); err != nil {
-		log.Printf("warn: cleanup: %v", err)
+		applog.Warn("cleanup", "error", err)
 	} else if n > 0 {
-		log.Printf("cleaned up %d old entries", n)
+		applog.Info("cleaned up old entries", "count", n)
 	}
 }
 
 func setupAutostart(app *application.App, sett *settings.Service) {
 	if sett.GetSettings().AutoStart {
 		if err := app.Autostart.Enable(); err != nil {
-			log.Printf("warn: autostart: %v", err)
+			applog.Warn("autostart", "error", err)
 		}
 	}
 }
 
 func showWindow(win application.Window) {
 	if win == nil {
+		applog.Info("showWindow: win is nil")
 		return
 	}
+	applog.Info("showWindow: capturing foreground + showing")
 	clipboard.CaptureForeground()
 	win.Center()
 	win.Show()
@@ -300,16 +331,23 @@ func showWindow(win application.Window) {
 }
 
 func hideWindow(win application.Window) {
-	if win == nil || !win.IsVisible() {
+	if win == nil {
+		applog.Info("hideWindow: win is nil")
 		return
 	}
+	if !win.IsVisible() {
+		applog.Info("hideWindow: already hidden")
+		return
+	}
+	applog.Info("hideWindow: hiding")
 	win.EmitEvent(events.WindowHiding, nil)
 	time.AfterFunc(200*time.Millisecond, func() { win.Hide() })
 }
 
 func must[T any](val T, err error) T {
 	if err != nil {
-		log.Fatal(err)
+		applog.Error("fatal", "error", err)
+		os.Exit(1)
 	}
 	return val
 }
@@ -333,7 +371,7 @@ func acquireLock(appData string) bool {
 	}
 	pid := os.Getpid()
 	if writeErr := os.WriteFile(lockFilePath, []byte(strconv.Itoa(pid)), 0600); writeErr != nil {
-		log.Printf("warn: write lock file: %v", writeErr)
+		applog.Warn("write lock file", "error", writeErr)
 		return true
 	}
 	return true

@@ -11,6 +11,7 @@ import (
 	"log"
 	"runtime"
 	"strings"
+	"time"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
@@ -30,6 +31,7 @@ const (
 	gmemMoveable      = 0x0002
 	wmClipboardUpdate = 0x031D
 	wmDestroy         = 0x0002
+	wmQuit            = 0x0012
 	processQueryLimit = 0x1000
 
 	// CFDIBV5 is the DIB v5 clipboard format constant.
@@ -131,6 +133,10 @@ func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 				log.Printf("[clipboard] Message loop exit (ret=%d)", ret)
 				break
 			}
+			if msg.Message == wmQuit {
+				log.Println("[clipboard] WM_QUIT received, exiting loop")
+				break
+			}
 			if msg.Message == wmClipboardUpdate {
 				log.Println("[clipboard] WM_CLIPBOARDUPDATE received")
 				data := captureAll()
@@ -171,9 +177,13 @@ func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 	stop := func() {
 		log.Println("[clipboard] Stopping monitor...")
 		procRemoveClipboardFormatListener.Call(uintptr(hwnd))
-		win.PostMessage(hwnd, wmDestroy, 0, 0)
-		<-done
-		log.Println("[clipboard] Monitor stopped")
+		win.PostMessage(hwnd, wmQuit, 0, 0)
+		select {
+		case <-done:
+			log.Println("[clipboard] Monitor stopped")
+		case <-time.After(3 * time.Second):
+			log.Println("[clipboard] Monitor stop timed out")
+		}
 	}
 
 	return stop, nil
