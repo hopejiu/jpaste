@@ -3,15 +3,11 @@ bin
 frontend/dist
 frontend/node_modules
 
-# Build output — ignore everything except Wails build scripts / configs
-build/
-!build/Taskfile.yml
-!build/config.yml
-!build/windows/
-!build/darwin/
-!build/linux/
-!build/appicon.png
-!build/appicon.icon/
+# Build output — only ignore generated binaries, keep all scripts/configs
+build/bin/
+build/**/*.syso
+build/**/*.exe
+build/**/*.dll
 
 # OS / IDE
 .vscode/
