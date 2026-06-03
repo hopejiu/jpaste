@@ -10,8 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@uiw/react-json-view": "^2.0.0-alpha.43",
     "@wailsio/runtime": "latest",
+    "jsoneditor": "^10.4.3",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react'
  * Reusable modal overlay for action content.
  * Props: open, onClose, title, wide, children
  */
-export default function ActionModal({ open, onClose, title, wide, children }) {
+export default function ActionModal({ open, onClose, title, children }) {
   const overlayRef = useRef(null)
 
   useEffect(() => {
@@ -25,14 +25,14 @@ export default function ActionModal({ open, onClose, title, wide, children }) {
       style={styles.overlay}
       onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
     >
-      <div style={wide ? styles.modalWide : styles.modal}>
+      <div style={styles.modal}>
         <div style={styles.header}>
           <h3 style={styles.title}>{title}</h3>
           <button style={styles.closeBtn} onClick={onClose} title="关闭">
             <X size={18} />
           </button>
         </div>
-        <div style={wide ? styles.contentTight : styles.content}>
+        <div style={styles.content}>
           {children}
         </div>
       </div>
@@ -55,14 +55,6 @@ const styles = {
     display: 'flex', flexDirection: 'column',
     animation: 'slideUp 200ms ease-out',
   },
-  modalWide: {
-    background: 'var(--color-bg, #f8fafc)',
-    borderRadius: 'var(--radius-lg, 12px)',
-    boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-    width: '98vw', maxWidth: '1400px', height: '94vh', maxHeight: '94vh',
-    display: 'flex', flexDirection: 'column',
-    animation: 'slideUp 200ms ease-out',
-  },
   header: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: '14px 18px', borderBottom: '1px solid var(--color-border)',
@@ -79,8 +71,5 @@ const styles = {
   },
   content: {
     padding: '18px', overflow: 'auto', flex: 1,
-  },
-  contentTight: {
-    padding: '10px 18px 14px', overflow: 'auto', flex: 1,
   },
 }
