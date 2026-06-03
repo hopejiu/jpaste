@@ -32,12 +32,6 @@ func Open(basePath string) (*sql.DB, error) {
 const nowMillis = "strftime('%Y-%m-%dT%H:%M:%f', 'now')"
 
 func migrate(db *sql.DB) error {
-	// Drop old tables (clean migration strategy).
-	db.Exec(`DROP TABLE IF EXISTS clipboard`)
-	db.Exec(`DROP TABLE IF EXISTS clipboard_entry`)
-	db.Exec(`DROP TABLE IF EXISTS clipboard_format`)
-
-	// ` || nowMillis || ` injects the expression for DEFAULT values.
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS clipboard_entry (
 			id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,6 +39,7 @@ func migrate(db *sql.DB) error {
 			source_exe   TEXT NOT NULL DEFAULT '',
 			source_title TEXT NOT NULL DEFAULT '',
 			tag_mask     INTEGER NOT NULL DEFAULT 0,
+			is_favorite  INTEGER NOT NULL DEFAULT 0,
 			created_at   TEXT NOT NULL DEFAULT (` + nowMillis + `),
 			updated_at   TEXT NOT NULL DEFAULT (` + nowMillis + `)
 		);
@@ -63,5 +58,12 @@ func migrate(db *sql.DB) error {
 
 		PRAGMA foreign_keys = ON;
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Migration: add is_favorite column to existing databases.
+	db.Exec(`ALTER TABLE clipboard_entry ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0`)
+
+	return nil
 }

@@ -9,8 +9,12 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
     if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
       e.preventDefault()
       const idx = parseInt(e.key) - 1
+      console.log('[kb] Ctrl+' + e.key + ' pressed, hasFocus=' + document.hasFocus() +
+        ', idx=' + idx + ', entries=' + entries.length + ', action=' + settings.default_action)
       if (idx < entries.length) {
-        useEntry(entries[idx].id, settings.default_action)
+        const entry = entries[idx]
+        console.log('[kb] calling useEntry id=' + entry.id + ' action=' + settings.default_action)
+        useEntry(entry.id, settings.default_action)
       }
       return
     }

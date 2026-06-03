@@ -38,7 +38,7 @@ func NewService(basePath string) *Service {
 			DefaultAction: "copy",
 			AutoStart:      false,
 			StartMinimized: false,
-			NotifyEnabled:  true,
+			NotifyEnabled:  false,
 			ActionConfig:   json.RawMessage("{}"),
 		},
 	}
@@ -66,7 +66,7 @@ func Defaults() Data {
 		DefaultAction:  "copy",
 		AutoStart:      false,
 		StartMinimized: false,
-		NotifyEnabled:  true,
+		NotifyEnabled:  false,
 	}
 }
 

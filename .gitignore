@@ -2,6 +2,28 @@
 bin
 frontend/dist
 frontend/node_modules
-build/linux/appimage/build
-build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
-build
+
+# Build output — ignore everything except Wails build scripts / configs
+build/
+!build/Taskfile.yml
+!build/config.yml
+!build/windows/
+!build/darwin/
+!build/linux/
+!build/appicon.png
+!build/appicon.icon/
+
+# OS / IDE
+.vscode/
+
+# CodeBuddy workspace data
+.codebuddy/memory/
+.codebuddy/skills/**/__pycache__/
+
+# Generated bindings (regenerated on build)
+frontend/bindings/
+
+# Debug / temp files
+build_err.txt
+gen_err.txt
+input.txt

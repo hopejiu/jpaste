@@ -2,6 +2,7 @@ package clipboard
 
 import (
 	"context"
+	"encoding/binary"
 	"log"
 	"strings"
 	"sync"
@@ -14,29 +15,34 @@ import (
 // Tag constants (bitmask)
 // ---------------------------------------------------------------------------
 
+// Win32 clipboard format constants — exported so other packages can reference
+// format types without importing lxn/win directly.
 const (
-	TagText     = 1 << 0 // plain text only
-	TagRichText = 1 << 1 // CF_HTML or CF_RTF
-	TagImage    = 1 << 2 // CF_DIB or CF_DIBV5
-	TagURL      = 1 << 3 // CF_UNICODETEXT starts with http(s)://
-	TagFile     = 1 << 4 // CF_HDROP or windows path pattern
+	CF_UNICODETEXT = 13 // win.CF_UNICODETEXT
+	CF_HDROP       = 15 // win.CF_HDROP
+	CF_DIB         = 8  // win.CF_DIB
+	// CFDIBV5 is defined in clipboard_windows.go (platform-specific).
+)
+
+const (
+	TagText  = 1 << 0 // plain text only
+	TagImage = 1 << 2 // CF_DIB or CF_DIBV5
+	TagURL   = 1 << 3 // CF_UNICODETEXT starts with http(s)://
+	TagFile  = 1 << 4 // CF_HDROP or windows path pattern
 )
 
 // ComputeTagMask determines tags from captured formats.
 func ComputeTagMask(formats []CapturedFormat) int {
 	mask := 0
 	hasImage := false
-	hasRichText := false
 	hasFile := false
 	hasPlainText := false
 
 	for _, f := range formats {
 		switch {
-		case f.FormatType == win.CF_DIB || f.FormatType == CFDIBV5:
+		case IsImageFormat(f.FormatType):
 			hasImage = true
-		case f.FormatType == cfHTML || f.FormatType == cfRTF:
-			hasRichText = true
-		case f.FormatType == win.CF_HDROP:
+		case IsHdropFormat(f.FormatType):
 			hasFile = true
 		case f.FormatType == win.CF_UNICODETEXT:
 			hasPlainText = true
@@ -53,20 +59,33 @@ func ComputeTagMask(formats []CapturedFormat) int {
 	if hasImage {
 		mask |= TagImage
 	}
-	if hasRichText {
-		mask |= TagRichText
-	}
 	if hasFile {
 		mask |= TagFile
 	}
 	// text = plain text without richer formats
-	if hasPlainText && !hasImage && !hasRichText && !hasFile {
+	if hasPlainText && !hasImage && !hasFile {
 		mask |= TagText
 	}
 
 	return mask
 }
 
+// IsTextFormat reports whether f is a text clipboard format (CF_UNICODETEXT, CF_TEXT).
+func IsTextFormat(f uint32) bool {
+	return f == win.CF_UNICODETEXT || f == win.CF_TEXT
+}
+
+// IsImageFormat reports whether f is an image clipboard format (CF_DIB, CF_DIBV5).
+func IsImageFormat(f uint32) bool {
+	return f == win.CF_DIB || f == CFDIBV5
+}
+
+// IsHdropFormat reports whether f is CF_HDROP.
+func IsHdropFormat(f uint32) bool {
+	return f == win.CF_HDROP
+}
+
+// isWindowsPath reports whether s looks like a Windows path (C:\... or UNC).
 func isWindowsPath(s string) bool {
 	if len(s) < 3 {
 		return false
@@ -96,6 +115,7 @@ type Entry struct {
 	SourceEXE   string        `json:"source_exe"`
 	SourceTitle string        `json:"source_title"`
 	Formats     []FormatEntry `json:"formats"`
+	IsFavorite  bool          `json:"is_favorite"`
 	CreatedAt   string        `json:"created_at"`
 	UpdatedAt   string        `json:"updated_at"`
 }
@@ -181,4 +201,30 @@ func (w *Watcher) ServiceShutdown() error {
 	}
 	w.started = false
 	return nil
+}
+
+// prependBMPHeader builds a valid BMP from a DIB by prefixing BITMAPFILEHEADER.
+func prependBMPHeader(dib []byte) []byte {
+	headerSize := binary.LittleEndian.Uint32(dib[0:4])
+	bitCount := binary.LittleEndian.Uint16(dib[14:16])
+	clrUsed := binary.LittleEndian.Uint32(dib[32:36])
+
+	var colorTableSize uint32
+	if bitCount <= 8 {
+		if clrUsed == 0 {
+			colorTableSize = uint32(1<<bitCount) * 4
+		} else {
+			colorTableSize = clrUsed * 4
+		}
+	}
+
+	offset := uint32(14 + headerSize + colorTableSize)
+	fileSize := uint32(14 + len(dib))
+
+	buf := make([]byte, 14+len(dib))
+	binary.LittleEndian.PutUint16(buf[0:2], 0x4D42) // 'BM'
+	binary.LittleEndian.PutUint32(buf[2:6], fileSize)
+	binary.LittleEndian.PutUint32(buf[10:14], offset)
+	copy(buf[14:], dib)
+	return buf
 }

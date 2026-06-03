@@ -40,10 +40,12 @@ type AppHandle struct{ app *application.App }
 func (h *AppHandle) Emit(name string, data any) { h.app.Event.Emit(name, data) }
 func (h *AppHandle) Wire(a *application.App)    { h.app = a }
 
-// clipboardImpl delegates to lxn/win WriteText.
+// clipboardImpl delegates to clipboard package functions.
 type clipboardImpl struct{}
 
-func (c clipboardImpl) SetText(text string) bool { return clipboard.WriteText(text) }
+func (c clipboardImpl) SetText(text string) bool   { return clipboard.WriteText(text) }
+func (c clipboardImpl) SetImage(dib []byte) bool    { return clipboard.WriteImage(dib) }
+func (c clipboardImpl) SetFiles(paths []string) bool { return clipboard.WriteFilePaths(paths) }
 
 func main() {
 	appData := filepath.Join(os.Getenv("APPDATA"), "jPaste")
@@ -69,7 +71,7 @@ func main() {
 	doPaste := func() {}
 
 	// Image store for clipboard images.
-	imageStore := clipboard.NewImageStore(appData)
+	imageStore := history.NewImageStore(appData)
 
 	// Sync service (WebDAV).
 	syncSvc := sync.NewService(appData, conn, sett, func(name string, data any) {
@@ -79,7 +81,8 @@ func main() {
 	})
 
 	// History service with capture pipeline hooks.
-	histSvc := history.NewService(conn, clipboardImpl{},
+	entryStore := history.NewSQLiteStore(conn)
+	histSvc := history.NewService(entryStore, clipboardImpl{},
 		history.WithPasteFunc(func() { doPaste() }),
 		history.WithEmitFunc(func(name string, data any) { handle.Emit(name, data) }),
 		history.WithNotifyFunc(func(title, msg string) {
@@ -97,10 +100,17 @@ func main() {
 	var openFileManagerFn func(string, bool) error
 	fileSvc := fileop.NewService(func(id int64) (string, error) {
 		var c string
+		// Try CF_UNICODETEXT first, then CF_HDROP for file entries.
 		err := conn.QueryRow(
 			`SELECT COALESCE(f.content, '') FROM clipboard_format f WHERE f.entry_id = ? AND f.format_type = 13`,
 			id,
 		).Scan(&c)
+		if err != nil {
+			err = conn.QueryRow(
+				`SELECT COALESCE(f.content, '') FROM clipboard_format f WHERE f.entry_id = ? AND f.format_type = 15`,
+				id,
+			).Scan(&c)
+		}
 		return c, err
 	}, fileop.WithOpenFileManager(func(path string, selectFile bool) error {
 		if openFileManagerFn == nil {
@@ -163,8 +173,12 @@ func main() {
 	})
 
 	doPaste = func() {
-		hideWindow(win)
-		time.Sleep(150 * time.Millisecond)
+		if win.IsVisible() {
+			win.EmitEvent(events.WindowHiding, nil)
+		}
+		time.Sleep(200 * time.Millisecond)
+		win.Hide()
+		time.Sleep(50 * time.Millisecond)
 		clipboard.Paste()
 	}
 

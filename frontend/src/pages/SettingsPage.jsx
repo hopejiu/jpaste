@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronUp, ChevronDown, Globe, CheckCircle, XCircle, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronUp, ChevronDown, Trash2 } from 'lucide-react'
+import { useApp } from '../context/AppContext'
 import { useClipboard } from '../context/ClipboardContext'
-import { Service as SyncService } from '../../bindings/jpaste/internal/sync'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
 import { getAll } from '../actions'
 import { formatBytes } from '../utils/format'
@@ -24,32 +24,15 @@ function parseHotkey(hotkey) {
 }
 
 export default function SettingsPage() {
-  const { settings, saveSettings, wdConfig, refreshWdConfig, clearAll } = useClipboard()
+  const { settings, saveSettings } = useApp()
+  const { clearAll } = useClipboard()
   const navigate = useNavigate()
   const [local, setLocal] = useState({ ...settings })
   const [saved, setSaved] = useState(false)
 
-  // WebDAV config state.
-  const [wdUrl, setWdUrl] = useState(wdConfig.url)
-  const [wdUser, setWdUser] = useState(wdConfig.username)
-  const [wdPass, setWdPass] = useState(wdConfig.password)
-  const [wdPassDirty, setWdPassDirty] = useState(false)
-  const [wdEnabled, setWdEnabled] = useState(wdConfig.enabled)
-  const [wdTesting, setWdTesting] = useState(false)
-  const [wdSaving, setWdSaving] = useState(false)
-  const [wdTestResult, setWdTestResult] = useState(null)
-
   // Stats state.
   const [stats, setStats] = useState({ count: 0, total_bytes: 0 })
   const [clearing, setClearing] = useState(false)
-
-  useEffect(() => {
-    setWdUrl(wdConfig.url)
-    setWdUser(wdConfig.username)
-    setWdPass(wdConfig.password)
-    setWdEnabled(wdConfig.enabled)
-    setWdPassDirty(false)
-  }, [wdConfig])
 
   useEffect(() => {
     HistoryService.GetStats()
@@ -93,37 +76,6 @@ export default function SettingsPage() {
   const handleKeyInput = (e) => {
     const val = e.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(-1).toUpperCase()
     if (val) updateHotkey(mods, val)
-  }
-
-  const handleSaveWd = async (toggleEnabled) => {
-    const enabled = toggleEnabled !== undefined ? toggleEnabled : wdEnabled
-    const cfg = { url: wdUrl, username: wdUser, password: wdPassDirty ? wdPass : '••••••••', enabled }
-    if (toggleEnabled !== undefined) setWdEnabled(toggleEnabled)
-    try {
-      await SyncService.SaveConfig(cfg)
-      setWdPassDirty(false)
-      setSaved(true)
-      setWdSaving(true)
-      await refreshWdConfig()
-      setTimeout(() => { setSaved(false); setWdSaving(false) }, 1500)
-    } catch (err) {
-      console.error('[wd] SaveConfig error:', err)
-      setWdTestResult({ ok: false, msg: '保存失败: ' + (err?.toString() || '未知错误') })
-      if (toggleEnabled !== undefined) setWdEnabled(!toggleEnabled)
-    }
-  }
-
-  const handleTestWd = async () => {
-    setWdTesting(true)
-    setWdTestResult(null)
-    try {
-      await SyncService.TestConnection({ url: wdUrl, username: wdUser, password: wdPass })
-      setWdTestResult({ ok: true, msg: '连接成功' })
-    } catch (err) {
-      setWdTestResult({ ok: false, msg: err.toString() })
-    } finally {
-      setWdTesting(false)
-    }
   }
 
   // Pre-compute sorted action modules (replaces JSX IIFE).
@@ -283,42 +235,6 @@ export default function SettingsPage() {
           </div>
         ))}
 
-        {/* WebDAV Sync */}
-        <div style={styles.group}>
-          <div style={styles.row}>
-            <div>
-              <div style={styles.label}>WebDAV 同步</div>
-              <div style={styles.desc}>同步剪贴板历史和设置到坚果云</div>
-            </div>
-            <Globe size={18} style={{ color: 'var(--color-muted)', flexShrink: 0 }} />
-          </div>
-          <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <input style={styles.wdInput} type="url" placeholder="WebDAV 地址 (例: https://dav.jianguoyun.com/dav/)" value={wdUrl} onChange={e => setWdUrl(e.target.value)} />
-            <input style={styles.wdInput} type="text" placeholder="账户名" value={wdUser} onChange={e => setWdUser(e.target.value)} />
-            <input style={styles.wdInput} type="password" placeholder="应用密码（非登录密码）" value={wdPass} onChange={e => { setWdPass(e.target.value); setWdPassDirty(true) }} />
-          </div>
-          {wdTestResult && (
-            <div style={{ marginTop: '8px', padding: '8px 12px', borderRadius: 'var(--radius-md)', fontSize: 'var(--font-size-xs)', display: 'flex', alignItems: 'center', gap: '6px', background: wdTestResult.ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', color: wdTestResult.ok ? '#059669' : '#DC2626' }}>
-              {wdTestResult.ok ? <CheckCircle size={14} /> : <XCircle size={14} />}
-              {wdTestResult.msg}
-            </div>
-          )}
-          <div style={{ ...styles.row, paddingTop: '10px' }}>
-            <div>
-              <div style={styles.label}>启用同步</div>
-              <div style={styles.desc}>{wdEnabled ? '自动同步剪贴板记录和配置' : '暂停同步'}</div>
-            </div>
-            <ToggleSwitch checked={wdEnabled} onChange={() => handleSaveWd(!wdEnabled)} label="切换同步" />
-          </div>
-          <div style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
-            <button style={styles.wdBtn} onClick={handleTestWd} disabled={wdTesting || !wdUrl || !wdUser || !wdPass}>
-              {wdTesting ? '测试中…' : '测试连接'}
-            </button>
-            <button style={{ ...styles.wdBtn, ...styles.wdBtnPrimary, ...(wdSaving ? { opacity: 0.7 } : {}) }} onClick={() => handleSaveWd()} disabled={!wdUrl || !wdUser}>
-              {wdSaving ? '已保存 ✓' : '保存'}
-            </button>
-          </div>
-        </div>
 
         {/* Action Modules */}
         <div style={styles.group}>

@@ -38,7 +38,6 @@ export const styles = {
   },
   tabActive: {
     background: 'rgba(99,102,241,0.12)', color: 'var(--color-primary)',
-    borderColor: 'rgba(99,102,241,0.3)',
   },
   list: { flex: 1, overflowY: 'auto', padding: '4px 0' },
   loading: {
@@ -114,6 +113,22 @@ export const styles = {
     color: 'var(--color-muted)',
   },
   itemImageLabel: { fontWeight: 500 },
+  // Thumbnail for image-only entries — auto-sized, constrained width.
+  thumbImg: {
+    maxWidth: '100%', maxHeight: '160px',
+    borderRadius: 'var(--radius-sm)', objectFit: 'contain',
+    display: 'block', background: 'rgba(99,102,241,0.04)',
+  },
+  // Inline thumbnail for mixed text+image entries.
+  thumbInline: {
+    width: '36px', height: '36px',
+    borderRadius: '4px', objectFit: 'cover',
+    flexShrink: 0, marginLeft: '8px',
+  },
+  // Row layout for mixed text+image content.
+  itemContentRow: {
+    display: 'flex', gap: '8px', alignItems: 'flex-start',
+  },
   imgOverlay: {
     position: 'fixed', inset: 0, zIndex: 3000,
     background: 'rgba(0,0,0,0.85)', display: 'flex',
@@ -125,5 +140,50 @@ export const styles = {
     cursor: 'pointer', zIndex: 1,
   },
   imgLoading: { color: '#fff', fontSize: 'var(--font-size-lg)' },
-  imgPreview: { maxWidth: '90vw', maxHeight: '90vh', borderRadius: 'var(--radius-md)' },
+  imgPreview: {
+    maxWidth: '90vw', maxHeight: '90vh', borderRadius: 'var(--radius-md)',
+    cursor: 'grab', userSelect: 'none',
+  },
+  imgPreviewDragging: { cursor: 'grabbing' },
+  // Favorite star button.
+  favBtn: {
+    width: '28px', height: '28px', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', border: 'none', background: 'transparent',
+    color: 'var(--color-muted)', cursor: 'pointer', borderRadius: '4px',
+    transition: 'all var(--transition-fast)', flexShrink: 0,
+  },
+  favBtnActive: { color: '#F59E0B' },
+  // Source application label.
+  sourceApp: {
+    fontSize: '11px', color: 'var(--color-muted)', opacity: 0.8,
+    marginLeft: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    maxWidth: '120px',
+  },
+  // Checkmark animation overlay.
+  checkmark: {
+    position: 'absolute', top: '50%', right: '12px',
+    transform: 'translateY(-50%)', color: '#10B981',
+    animation: 'fadeScaleIn 250ms ease-out',
+    pointerEvents: 'none',
+  },
+  // Image-only entry hover style.
+  itemImage: {
+    cursor: 'pointer',
+    transition: 'background var(--transition-fast), box-shadow var(--transition-fast)',
+  },
+  // Thumbnail wrapper for hover overlay positioning.
+  thumbWrapper: { position: 'relative', display: 'inline-block', maxWidth: '100%' },
+  // Hover overlay badge on image entries.
+  thumbOverlay: {
+    position: 'absolute', inset: 0, display: 'flex',
+    alignItems: 'center', justifyContent: 'center',
+    background: 'rgba(0,0,0,0.35)', borderRadius: 'var(--radius-sm)',
+    opacity: 0, transition: 'opacity var(--transition-fast)',
+    pointerEvents: 'none',
+  },
+  thumbOverlayVisible: { opacity: 1 },
+  thumbOverlayText: {
+    display: 'flex', alignItems: 'center', gap: '4px',
+    color: '#fff', fontSize: 'var(--font-size-sm)', fontWeight: 600,
+  },
 }

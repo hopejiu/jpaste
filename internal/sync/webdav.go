@@ -12,8 +12,26 @@ import (
 	"time"
 )
 
-// client handles WebDAV HTTP operations with Basic Auth.
-type client struct {
+// WebDAVClient abstracts WebDAV operations for sync.
+// The production adapter is *webdavClient; tests use a fake.
+type WebDAVClient interface {
+	TestConnect() error
+	ListEntries() ([]RemoteEntry, error)
+	GetEntry(hash string) ([]byte, error)
+	PutEntry(hash string, data []byte) error
+	DeleteEntry(hash string) error
+	PutSettings(data []byte) error
+	GetSettings() ([]byte, error)
+}
+
+// RemoteEntry represents a single entry file on the WebDAV server.
+type RemoteEntry struct {
+	Hash         string
+	LastModified time.Time
+}
+
+// webdavClient handles WebDAV HTTP operations with Basic Auth.
+type webdavClient struct {
 	baseURL    string
 	httpClient *http.Client
 	username   string
@@ -27,8 +45,8 @@ type client struct {
 	mkdirs map[string]bool
 }
 
-func newClient(cfg Config) *client {
-	return &client{
+func newClient(cfg Config) WebDAVClient {
+	return &webdavClient{
 		baseURL:    strings.TrimRight(cfg.URL, "/"),
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		username:   cfg.Username,
@@ -39,9 +57,9 @@ func newClient(cfg Config) *client {
 
 // --- Public API ---
 
-// testConnect verifies the WebDAV server is reachable and directories exist.
+// TestConnect verifies the WebDAV server is reachable and directories exist.
 // Returns nil on success.
-func (c *client) testConnect() error {
+func (c *webdavClient) TestConnect() error {
 	// Ensure base directory exists (no trailing slash: some servers reject it).
 	if err := c.mkcol("/jPaste"); err != nil {
 		return fmt.Errorf("create jPaste dir: %w", err)
@@ -52,13 +70,13 @@ func (c *client) testConnect() error {
 	return nil
 }
 
-// listEntries returns all remote entry files with their last-modified timestamps.
-func (c *client) listEntries() ([]remoteEntry, error) {
+// ListEntries returns all remote entry files with their last-modified timestamps.
+func (c *webdavClient) ListEntries() ([]RemoteEntry, error) {
 	files, err := c.propfind("/jPaste/entries/")
 	if err != nil {
 		return nil, err
 	}
-	var entries []remoteEntry
+	var entries []RemoteEntry
 	for _, f := range files {
 		// Filter to only .json files, extract content_hash from filename.
 		name := filepath.Base(f.href)
@@ -69,22 +87,22 @@ func (c *client) listEntries() ([]remoteEntry, error) {
 		if len(hash) != 64 {
 			continue
 		}
-		entries = append(entries, remoteEntry{
-			hash:         hash,
-			lastModified: f.lastModified,
+		entries = append(entries, RemoteEntry{
+			Hash:         hash,
+			LastModified: f.lastModified,
 		})
 	}
 	return entries, nil
 }
 
-// getEntry downloads the JSON content for a single entry hash.
-func (c *client) getEntry(hash string) ([]byte, error) {
+// GetEntry downloads the JSON content for a single entry hash.
+func (c *webdavClient) GetEntry(hash string) ([]byte, error) {
 	path := fmt.Sprintf("/jPaste/entries/%s/%s.json", hash[:2], hash)
 	return c.doRequest("GET", path, nil)
 }
 
-// putEntry uploads an entry JSON blob to the correct prefix directory.
-func (c *client) putEntry(hash string, data []byte) error {
+// PutEntry uploads an entry JSON blob to the correct prefix directory.
+func (c *webdavClient) PutEntry(hash string, data []byte) error {
 	prefix := "/jPaste/entries/" + hash[:2]
 	if err := c.mkcol(prefix); err != nil {
 		return fmt.Errorf("mkcol prefix: %w", err)
@@ -93,25 +111,25 @@ func (c *client) putEntry(hash string, data []byte) error {
 	return c.doRequestNoBody("PUT", path, data)
 }
 
-// deleteEntry removes an entry file from WebDAV.
-func (c *client) deleteEntry(hash string) error {
+// DeleteEntry removes an entry file from WebDAV.
+func (c *webdavClient) DeleteEntry(hash string) error {
 	path := fmt.Sprintf("/jPaste/entries/%s/%s.json", hash[:2], hash)
 	return c.doRequestNoBody("DELETE", path, nil)
 }
 
-// putSettings uploads settings.json to WebDAV.
-func (c *client) putSettings(data []byte) error {
+// PutSettings uploads settings.json to WebDAV.
+func (c *webdavClient) PutSettings(data []byte) error {
 	return c.doRequestNoBody("PUT", "/jPaste/settings.json", data)
 }
 
-// getSettings downloads settings.json from WebDAV.
-func (c *client) getSettings() ([]byte, error) {
+// GetSettings downloads settings.json from WebDAV.
+func (c *webdavClient) GetSettings() ([]byte, error) {
 	return c.doRequest("GET", "/jPaste/settings.json", nil)
 }
 
 // --- Internal HTTP helpers ---
 
-func (c *client) mkcol(path string) error {
+func (c *webdavClient) mkcol(path string) error {
 	path = strings.TrimRight(path, "/")
 	// Skip if we already created this directory (cache hit).
 	c.reqMu.Lock()
@@ -142,7 +160,7 @@ func (c *client) mkcol(path string) error {
 }
 
 // rateLimit ensures at least 200ms between consecutive HTTP requests.
-func (c *client) rateLimit() {
+func (c *webdavClient) rateLimit() {
 	c.reqMu.Lock()
 	elapsed := time.Since(c.lastReq)
 	if elapsed < 200*time.Millisecond {
@@ -152,7 +170,7 @@ func (c *client) rateLimit() {
 	c.reqMu.Unlock()
 }
 
-func (c *client) doRequest(method, path string, body []byte) ([]byte, error) {
+func (c *webdavClient) doRequest(method, path string, body []byte) ([]byte, error) {
 	c.rateLimit()
 	req, err := c.buildReq(method, path, body)
 	if err != nil {
@@ -174,7 +192,7 @@ func (c *client) doRequest(method, path string, body []byte) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-func (c *client) doRequestNoBody(method, path string, body []byte) error {
+func (c *webdavClient) doRequestNoBody(method, path string, body []byte) error {
 	c.rateLimit()
 	req, err := c.buildReq(method, path, body)
 	if err != nil {
@@ -196,7 +214,7 @@ func (c *client) doRequestNoBody(method, path string, body []byte) error {
 	return nil
 }
 
-func (c *client) buildReq(method, path string, body []byte) (*http.Request, error) {
+func (c *webdavClient) buildReq(method, path string, body []byte) (*http.Request, error) {
 	url := c.baseURL + path
 	var r io.Reader
 	if body != nil {
@@ -242,13 +260,13 @@ type propfindResponseH struct {
 	} `xml:"propstat"`
 }
 
-type remoteEntry struct {
-	href         string    // full path from PROPFIND (internal use)
-	hash         string    // content_hash (64-char hex)
+// internalEntry is used internally by propfind before filtering into RemoteEntry.
+type internalEntry struct {
+	href         string
 	lastModified time.Time
 }
 
-func (c *client) propfind(dir string) ([]remoteEntry, error) {
+func (c *webdavClient) propfind(dir string) ([]internalEntry, error) {
 	body := propfindRequest{D: "DAV:"}
 	body.Prop.GetLastModified = ""
 	data, err := xml.Marshal(body)
@@ -269,7 +287,7 @@ func (c *client) propfind(dir string) ([]remoteEntry, error) {
 		return nil, fmt.Errorf("unmarshal propfind response: %w", err)
 	}
 
-	var entries []remoteEntry
+	var entries []internalEntry
 	for _, r := range pr.Response {
 		// Skip the directory itself (href matches the request path).
 		if strings.TrimRight(r.Href, "/") == strings.TrimRight(dir, "/") {
@@ -282,7 +300,7 @@ func (c *client) propfind(dir string) ([]remoteEntry, error) {
 		if err != nil {
 			continue
 		}
-		entries = append(entries, remoteEntry{
+		entries = append(entries, internalEntry{
 			href:         r.Href,
 			lastModified: t,
 		})

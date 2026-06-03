@@ -1,59 +1,45 @@
-# Welcome to Your New Wails3 Project!
+# jPaste
 
-Congratulations on generating your Wails3 application! This README will guide you through the next steps to get your project up and running.
+A modern clipboard manager for Windows, built with Wails v3 + React.
 
-## Getting Started
+> 一个轻量级 Windows 剪贴板管理器，事件驱动监听，支持文本/图片/文件/URL 分类和即时搜索。
 
-1. Navigate to your project directory in the terminal.
+## Features
 
-2. To run your application in development mode, use the following command:
+- **Event-driven capture** — `WM_CLIPBOARDUPDATE` message-only window, no polling
+- **Multi-format support** — text (`CF_UNICODETEXT`), images (`CF_DIB`), file paths (`CF_HDROP`)
+- **Source tracking** — records which application produced each clipboard entry
+- **Tag-based filtering** — 全部 / 文本 / 图片 / 网址 / 文件 / 收藏
+- **Instant search** — full-text search across clipboard history
+- **Content-aware actions** — JSON viewer, math evaluator, URL opener, Base64 decoder, etc.
+- **Global hotkey** — `Alt+V` shows/hides the window
+- **Configurable** — copy or paste-on-select, retention period, auto-start
 
-   ```
-   wails3 dev
-   ```
+## Download
 
-   This will start your application and enable hot-reloading for both frontend and backend changes.
+Download the latest `jpaste.exe` from [Releases](https://github.com/wangxianyu/jPaste/releases). Portable — no installation required.
 
-3. To build your application for production, use:
+## Development
 
-   ```
-   wails3 build
-   ```
+```bash
+# Install Wails CLI
+go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
-   This will create a production-ready executable in the `build` directory.
+# Run in dev mode (hot-reload)
+wails3 dev
 
-## Exploring Wails3 Features
+# Build production binary
+wails3 build
+# Output: bin/jpaste.exe
+```
 
-Now that you have your project set up, it's time to explore the features that Wails3 offers:
+## Tech Stack
 
-1. **Check out the examples**: The best way to learn is by example. Visit the `examples` directory in the `v3/examples` directory to see various sample applications.
+- **Backend**: Go 1.25 + Wails v3 + SQLite (via `modernc.org/sqlite`)
+- **Frontend**: React 18 + Vite + React Router + Lucide Icons
+- **Clipboard**: `lxn/win` — raw Win32 API for format enumeration, owner detection, and paste simulation
+- **Storage**: `%APPDATA%/jPaste/clipboard.db` (SQLite) + `%APPDATA%/jPaste/images/` (PNG/DIB)
 
-2. **Run an example**: To run any of the examples, navigate to the example's directory and use:
+## License
 
-   ```
-   go run .
-   ```
-
-   Note: Some examples may be under development during the alpha phase.
-
-3. **Explore the documentation**: Visit the [Wails3 documentation](https://v3.wails.io/) for in-depth guides and API references.
-
-4. **Join the community**: Have questions or want to share your progress? Join the [Wails Discord](https://discord.gg/JDdSxwjhGf) or visit the [Wails discussions on GitHub](https://github.com/wailsapp/wails/discussions).
-
-## Project Structure
-
-Take a moment to familiarize yourself with your project structure:
-
-- `frontend/`: Contains your frontend code (HTML, CSS, JavaScript/TypeScript)
-- `main.go`: The entry point of your Go backend
-- `app.go`: Define your application structure and methods here
-- `wails.json`: Configuration file for your Wails project
-
-## Next Steps
-
-1. Modify the frontend in the `frontend/` directory to create your desired UI.
-2. Add backend functionality in `main.go`.
-3. Use `wails3 dev` to see your changes in real-time.
-4. When ready, build your application with `wails3 build`.
-
-Happy coding with Wails3! If you encounter any issues or have questions, don't hesitate to consult the documentation or reach out to the Wails community.
+MIT

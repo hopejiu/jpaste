@@ -1,33 +1,17 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import { Events } from '@wailsio/runtime'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
-import { Service as SettingsService } from '../../bindings/jpaste/internal/settings'
-import { Service as SyncService } from '../../bindings/jpaste/internal/sync'
 import { EVENTS } from '../events'
-import { defaultConfig } from '../actions'
 
 const ClipboardContext = createContext(null)
-
-const DEFAULT_SETTINGS = {
-  hotkey: 'Alt+V',
-  retain_days: 30,
-  default_action: 'copy',
-  auto_start: false,
-  start_minimized: false,
-  notify_enabled: true,
-  action_config: {},
-}
-
-const DEFAULT_SYNC_STATUS = { status: 'none', error: '' }
-const DEFAULT_WD_CONFIG = { url: '', username: '', password: '', enabled: false }
 
 // Tag mask constants (must match Go clipboard package).
 export const TAG_ALL = 0
 export const TAG_TEXT = 1
-export const TAG_RICH_TEXT = 2
 export const TAG_IMAGE = 4
 export const TAG_URL = 8
 export const TAG_FILE = 16
+export const TAG_FAVORITE = 32
 
 export const TAGS = [
   { id: TAG_ALL, label: '全部' },
@@ -35,6 +19,7 @@ export const TAGS = [
   { id: TAG_IMAGE, label: '图片' },
   { id: TAG_URL, label: '网址' },
   { id: TAG_FILE, label: '文件' },
+  { id: TAG_FAVORITE, label: '收藏' },
 ]
 
 export function ClipboardProvider({ children }) {
@@ -42,56 +27,13 @@ export function ClipboardProvider({ children }) {
   const [search, setSearch] = useState('')
   const [activeTag, setActiveTag] = useState(TAG_ALL)
   const [hasMore, setHasMore] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   // Cursor state — refs to avoid dependency loops in useEffect.
   const cursorRef = useRef({ updatedAt: '', id: 0 })
   const searchRef = useRef('')
   const tagRef = useRef(TAG_ALL)
-
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS)
-  const [syncStatus, setSyncStatus] = useState(DEFAULT_SYNC_STATUS)
-  const [wdConfig, setWdConfig] = useState(DEFAULT_WD_CONFIG)
-
-  // Load settings.
-  useEffect(() => {
-    SettingsService.GetSettings()
-      .then(s => {
-        const actionConfig = { ...defaultConfig(), ...(s.action_config || {}) }
-        setSettings({ ...s, action_config: actionConfig })
-      })
-      .catch(console.error)
-  }, [])
-
-  // Load WebDAV config.
-  useEffect(() => {
-    SyncService.GetConfig()
-      .then(c => {
-        if (c && (c.url || c.username)) {
-          setWdConfig({ url: c.url || '', username: c.username || '', password: c.password || '', enabled: c.enabled || false })
-        }
-      })
-      .catch(e => console.error('GetConfig error:', e))
-  }, [])
-
-  const refreshWdConfig = useCallback(async () => {
-    try {
-      const c = await SyncService.GetConfig()
-      if (c) {
-        setWdConfig({ url: c.url || '', username: c.username || '', password: c.password || '', enabled: c.enabled || false })
-      }
-    } catch (e) {
-      console.error('[wd:ctx] refresh config error:', e)
-    }
-  }, [])
-
-  // Listen for sync status events.
-  useEffect(() => {
-    const unsub = Events.On(EVENTS.SYNC_STATUS, (evt) => {
-      setSyncStatus(evt.data || DEFAULT_SYNC_STATUS)
-    })
-    return unsub
-  }, [])
+  const debounceRef = useRef(null)
 
   // refreshHistory: first page (resets cursor).
   const refreshHistory = useCallback(async (searchTerm = '', tagMask = TAG_ALL) => {
@@ -100,7 +42,6 @@ export function ClipboardProvider({ children }) {
     tagRef.current = tagMask
     try {
       const result = await HistoryService.GetHistory(searchTerm, tagMask, '', 0)
-      // Wails passes Go return values as array: [entries, hasMore]
       if (Array.isArray(result)) {
         const [list, more] = result
         setEntries(list || [])
@@ -153,8 +94,11 @@ export function ClipboardProvider({ children }) {
   // When search or tag changes, reset and reload.
   const handleSetSearch = useCallback((term) => {
     setSearch(term)
-    refreshHistory(term, activeTag)
-  }, [activeTag, refreshHistory])
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      refreshHistory(term, tagRef.current)
+    }, 300)
+  }, [refreshHistory])
 
   const handleSetTag = useCallback((tag) => {
     setActiveTag(tag)
@@ -187,15 +131,6 @@ export function ClipboardProvider({ children }) {
     }
   }, [refreshHistory])
 
-  const saveSettings = useCallback(async (newSettings) => {
-    try {
-      await SettingsService.SaveSettings(newSettings)
-      setSettings(newSettings)
-    } catch (err) {
-      console.error('Failed to save settings:', err)
-    }
-  }, [])
-
   const clearAll = useCallback(async () => {
     try {
       await HistoryService.ClearAll()
@@ -205,15 +140,21 @@ export function ClipboardProvider({ children }) {
     }
   }, [refreshHistory])
 
+  const toggleFavorite = useCallback(async (id, value) => {
+    try {
+      await HistoryService.ToggleFavorite(id, value)
+      setEntries(prev => prev.map(e => e.id === id ? { ...e, is_favorite: value } : e))
+    } catch (err) {
+      console.error('Failed to toggle favorite:', err)
+    }
+  }, [])
+
   return (
     <ClipboardContext.Provider value={{
       entries, search, setSearch: handleSetSearch,
       activeTag, setActiveTag: handleSetTag,
       hasMore, loading, loadMore,
-      refreshHistory, useEntry, deleteEntry, clearAll,
-      settings, saveSettings,
-      syncStatus,
-      wdConfig, refreshWdConfig,
+      refreshHistory, useEntry, deleteEntry, clearAll, toggleFavorite,
     }}>
       {children}
     </ClipboardContext.Provider>

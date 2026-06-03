@@ -2,22 +2,20 @@ package history
 
 import (
 	"crypto/sha256"
-	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"jpaste/internal/clipboard"
-
-	"github.com/lxn/win"
 )
 
 // Service provides clipboard history queries and actions.
 type Service struct {
-	db         *sql.DB
+	store      EntryStore
 	clipboard  ClipboardWriter
-	imageStore *clipboard.ImageStore
+	imageStore *ImageStore
 
 	performPaste func()
 	onEmit       func(name string, data any)
@@ -28,6 +26,8 @@ type Service struct {
 // ClipboardWriter abstracts clipboard write operations.
 type ClipboardWriter interface {
 	SetText(text string) bool
+	SetImage(dib []byte) bool
+	SetFiles(paths []string) bool
 }
 
 // SyncFormat is a text format payload for sync push.
@@ -51,22 +51,22 @@ func WithNotifyFunc(fn func(title, msg string)) Option {
 func WithSyncPushFunc(fn func(contentHash string, formats []SyncFormat)) Option {
 	return func(s *Service) { s.onSyncPush = fn }
 }
-func WithImageStore(is *clipboard.ImageStore) Option {
+func WithImageStore(is *ImageStore) Option {
 	return func(s *Service) { s.imageStore = is }
 }
 
 // NewService creates a Service.
-func NewService(db *sql.DB, cw ClipboardWriter, opts ...Option) *Service {
-	s := &Service{db: db, clipboard: cw}
+func NewService(store EntryStore, cw ClipboardWriter, opts ...Option) *Service {
+	s := &Service{store: store, clipboard: cw}
 	for _, o := range opts {
 		o(s)
 	}
 	return s
 }
 
-// nowMillis returns the current time in SQLite-compatible millisecond format.
+// nowMillis returns the current local time in SQLite-compatible millisecond format.
 func nowMillis() string {
-	return time.Now().UTC().Format("2006-01-02T15:04:05.000")
+	return time.Now().Format("2006-01-02T15:04:05.000")
 }
 
 // CaptureEntry persists or deduplicates a clipboard entry.
@@ -75,22 +75,21 @@ func (s *Service) CaptureEntry(data clipboard.CapturedData) (*clipboard.Entry, b
 	tagMask := clipboard.ComputeTagMask(data.Formats)
 
 	// Try dedup: refresh timestamp if hash exists.
-	result, _ := s.db.Exec(
-		`UPDATE clipboard_entry SET updated_at = ?, source_exe = ?, source_title = ?, tag_mask = ? WHERE content_hash = ?`,
-		now, data.SourceEXE, data.SourceTitle, tagMask, data.PrimaryHash,
-	)
-	n, _ := result.RowsAffected()
-	if n > 0 {
+	deduped, err := s.store.UpsertDedup(data.PrimaryHash, data.SourceEXE, data.SourceTitle, tagMask, now)
+	if err != nil {
+		log.Printf("[history] dedup err: %v", err)
+	}
+	if deduped {
 		s.pushToSync(data.PrimaryHash, data.Formats)
 		return nil, false
 	}
 
 	// Insert new entry.
-	res, _ := s.db.Exec(
-		`INSERT INTO clipboard_entry (content_hash, source_exe, source_title, tag_mask, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		data.PrimaryHash, data.SourceEXE, data.SourceTitle, tagMask, now, now,
-	)
-	id, _ := res.LastInsertId()
+	id, err := s.store.InsertEntry(data.PrimaryHash, data.SourceEXE, data.SourceTitle, tagMask, now)
+	if err != nil {
+		log.Printf("[history] insert entry err: %v", err)
+		return nil, false
+	}
 
 	today := time.Now().Format("2006-01-02")
 	for _, f := range data.Formats {
@@ -113,7 +112,7 @@ func (s *Service) CaptureEntry(data clipboard.CapturedData) (*clipboard.Entry, b
 func (s *Service) saveFormat(entryID int64, f clipboard.CapturedFormat, today string) {
 	h := sha256Hash(f.Text, f.RawData)
 
-	if f.RawData != nil && (f.FormatType == win.CF_DIB || f.FormatType == clipboard.CFDIBV5) {
+	if f.RawData != nil && clipboard.IsImageFormat(f.FormatType) {
 		if s.imageStore == nil {
 			return
 		}
@@ -121,15 +120,9 @@ func (s *Service) saveFormat(entryID int64, f clipboard.CapturedFormat, today st
 		if err != nil {
 			return
 		}
-		s.db.Exec(
-			`INSERT OR IGNORE INTO clipboard_format (entry_id, format_type, file_path, format_hash) VALUES (?, ?, ?, ?)`,
-			entryID, f.FormatType, filePath, h,
-		)
+		s.store.InsertFormat(entryID, f.FormatType, "", filePath, h)
 	} else {
-		s.db.Exec(
-			`INSERT OR IGNORE INTO clipboard_format (entry_id, format_type, content, format_hash) VALUES (?, ?, ?, ?)`,
-			entryID, f.FormatType, f.Text, h,
-		)
+		s.store.InsertFormat(entryID, f.FormatType, f.Text, "", h)
 	}
 }
 
@@ -139,7 +132,7 @@ func (s *Service) pushToSync(hash string, formats []clipboard.CapturedFormat) {
 	}
 	var sf []SyncFormat
 	for _, f := range formats {
-		if f.Text != "" && f.FormatType != win.CF_HDROP {
+		if f.Text != "" && !clipboard.IsHdropFormat(f.FormatType) {
 			sf = append(sf, SyncFormat{FormatType: f.FormatType, Content: f.Text})
 		}
 	}
@@ -150,175 +143,116 @@ func (s *Service) pushToSync(hash string, formats []clipboard.CapturedFormat) {
 
 // GetHistory returns entries with cursor-based pagination and tag filtering.
 // tagMask=0 means all, afterUpdatedAt="" means first page.
+// tagMask bit 5 (value 32) triggers favorites-only filter.
 func (s *Service) GetHistory(search string, tagMask int, afterUpdatedAt string, afterID int64) (entries []clipboard.Entry, hasMore bool, err error) {
-	baseSQL := `SELECT e.id, e.content_hash, e.source_exe, e.source_title, e.created_at, e.updated_at FROM clipboard_entry e`
 	pageSize := 20 + 1 // one extra to detect hasMore
 
-	var conditions []string
-	var args []interface{}
-
-	// Tag filter.
-	if tagMask != 0 {
-		conditions = append(conditions, `e.tag_mask & ? != 0`)
-		args = append(args, tagMask)
-	}
-
-	// Search filter.
-	if search != "" {
-		conditions = append(conditions,
-			`e.id IN (SELECT DISTINCT entry_id FROM clipboard_format WHERE content LIKE ?)`)
-		args = append(args, "%"+search+"%")
-	}
-
-	// Cursor.
-	if afterUpdatedAt != "" {
-		conditions = append(conditions, `(e.updated_at < ? OR (e.updated_at = ? AND e.id < ?))`)
-		args = append(args, afterUpdatedAt, afterUpdatedAt, afterID)
-	}
-
-	where := ""
-	if len(conditions) > 0 {
-		where = " WHERE " + conditions[0]
-		for i := 1; i < len(conditions); i++ {
-			where += " AND " + conditions[i]
-		}
-	}
-
-	query := baseSQL + where + ` ORDER BY e.updated_at DESC, e.id DESC LIMIT ?`
-	args = append(args, pageSize)
-
-	rows, err := s.db.Query(query, args...)
+	rows, err := s.store.QueryHistory(search, tagMask, afterUpdatedAt, afterID, pageSize)
 	if err != nil {
 		return nil, false, fmt.Errorf("query history: %w", err)
 	}
-	defer rows.Close()
 
-	type raw struct {
-		id          int64
-		contentHash string
-		sourceEXE   string
-		sourceTitle string
-		createdAt   string
-		updatedAt   string
-	}
-
-	var rawList []raw
-	for rows.Next() {
-		var r raw
-		if err := rows.Scan(&r.id, &r.contentHash, &r.sourceEXE, &r.sourceTitle, &r.createdAt, &r.updatedAt); err != nil {
-			return nil, false, fmt.Errorf("scan entry: %w", err)
-		}
-		rawList = append(rawList, r)
-	}
-
-	hasMore = len(rawList) == pageSize
+	hasMore = len(rows) == pageSize
 	if hasMore {
-		rawList = rawList[:len(rawList)-1]
+		rows = rows[:len(rows)-1]
 	}
 
 	// Batch-load formats.
-	ids := make([]int64, len(rawList))
-	for i, r := range rawList {
-		ids[i] = r.id
+	ids := make([]int64, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
 	}
-	formatMap := s.loadFormats(ids)
+	formatMap, _ := s.store.LoadFormats(ids)
 
-	for _, r := range rawList {
-		fmts := formatMap[r.id]
+	for _, r := range rows {
+		fmts := formatMap[r.ID]
 		text := ""
 		for _, f := range fmts {
-			if f.FormatType == win.CF_UNICODETEXT && f.Content != "" {
+			if f.FormatType == clipboard.CF_UNICODETEXT && f.Content != "" {
 				text = f.Content
 				break
 			}
 		}
+		// Fallback: CF_HDROP path list when CF_UNICODETEXT is absent.
+		if text == "" {
+			for _, f := range fmts {
+				if f.FormatType == clipboard.CF_HDROP && f.Content != "" {
+					text = f.Content
+					break
+				}
+			}
+		}
 		entries = append(entries, clipboard.Entry{
-			ID:          r.id,
-			ContentHash: r.contentHash,
+			ID:          r.ID,
+			ContentHash: r.ContentHash,
 			Content:     text,
-			SourceEXE:   r.sourceEXE,
-			SourceTitle: r.sourceTitle,
+			SourceEXE:   r.SourceEXE,
+			SourceTitle: r.SourceTitle,
 			Formats:     fmts,
-			CreatedAt:   r.createdAt,
-			UpdatedAt:   r.updatedAt,
+			IsFavorite:  r.IsFavorite,
+			CreatedAt:   r.CreatedAt,
+			UpdatedAt:   r.UpdatedAt,
 		})
 	}
 	return entries, hasMore, nil
 }
 
-func (s *Service) loadFormats(ids []int64) map[int64][]clipboard.FormatEntry {
-	if len(ids) == 0 {
-		return nil
-	}
-	idArgs := make([]interface{}, len(ids))
-	placeholders := make([]byte, 0, len(ids)*3)
-	placeholders = append(placeholders, '?')
-	idArgs[0] = ids[0]
-	for i := 1; i < len(ids); i++ {
-		placeholders = append(placeholders, ',', '?')
-		idArgs[i] = ids[i]
-	}
-
-	rows, err := s.db.Query(
-		`SELECT entry_id, format_type, COALESCE(content, ''), COALESCE(file_path, '') FROM clipboard_format WHERE entry_id IN (`+string(placeholders)+`)`,
-		idArgs...,
-	)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-
-	m := make(map[int64][]clipboard.FormatEntry)
-	for rows.Next() {
-		var eid int64
-		var ft clipboard.FormatEntry
-		if err := rows.Scan(&eid, &ft.FormatType, &ft.Content, &ft.FilePath); err != nil {
-			continue
-		}
-		m[eid] = append(m[eid], ft)
-	}
-	return m
-}
-
 // DeleteEntry removes a single entry by ID.
 func (s *Service) DeleteEntry(id int64) error {
-	rows, err := s.db.Query(`SELECT file_path FROM clipboard_format WHERE entry_id = ? AND file_path != ''`, id)
-	if err == nil {
-		var paths []string
-		for rows.Next() {
-			var p string
-			rows.Scan(&p)
-			if p != "" {
-				paths = append(paths, p)
-			}
-		}
-		rows.Close()
-		if s.imageStore != nil {
-			s.imageStore.DeleteByEntry(paths)
-		}
+	paths, err := s.store.DeleteEntry(id)
+	if s.imageStore != nil && len(paths) > 0 {
+		s.imageStore.DeleteByEntry(paths)
 	}
-	_, err = s.db.Exec(`DELETE FROM clipboard_entry WHERE id = ?`, id)
 	return err
 }
 
 // UseEntry performs the default action and refreshes updated_at.
 func (s *Service) UseEntry(id int64, action string) error {
-	var text string
-	err := s.db.QueryRow(
-		`SELECT COALESCE(f.content, '') FROM clipboard_format f WHERE f.entry_id = ? AND f.format_type = ?`,
-		id, win.CF_UNICODETEXT,
-	).Scan(&text)
-	if err != nil || text == "" {
-		return fmt.Errorf("no text format for entry %d", id)
+	// Try CF_HDROP (file paths) first — restore as proper file drop.
+	hdropText, _ := s.store.QueryFormatContent(id, clipboard.CF_HDROP)
+	if hdropText != "" {
+		paths := strings.Split(hdropText, "\n")
+		s.store.UpdateTimestamp(id, nowMillis())
+		s.clipboard.SetFiles(paths)
+		if action == "paste" && s.performPaste != nil {
+			s.performPaste()
+		}
+		return nil
 	}
 
-	s.db.Exec(`UPDATE clipboard_entry SET updated_at = ? WHERE id = ?`, nowMillis(), id)
-	s.clipboard.SetText(text)
+	// Try text.
+	text, _ := s.store.QueryFormatContent(id, clipboard.CF_UNICODETEXT)
+	if text != "" {
+		s.store.UpdateTimestamp(id, nowMillis())
+		s.clipboard.SetText(text)
+		if action == "paste" && s.performPaste != nil {
+			s.performPaste()
+		}
+		return nil
+	}
 
+	// Fallback: try image.
+	filePath, err := s.store.QueryImageFilePath(id)
+	if err != nil || s.imageStore == nil {
+		return fmt.Errorf("no pasteable format for entry %d", id)
+	}
+
+	dib, err := s.imageStore.ReadDIB(filePath)
+	if err != nil {
+		return fmt.Errorf("read image for entry %d: %w", id, err)
+	}
+
+	s.store.UpdateTimestamp(id, nowMillis())
+	s.clipboard.SetImage(dib)
 	if action == "paste" && s.performPaste != nil {
 		s.performPaste()
 	}
 	return nil
+}
+
+// ToggleFavorite toggles the is_favorite flag for an entry.
+func (s *Service) ToggleFavorite(id int64, value bool) error {
+	return s.store.ToggleFavorite(id, value)
 }
 
 // Stats holds aggregate clipboard statistics.
@@ -327,93 +261,46 @@ type Stats struct {
 	TotalBytes int64 `json:"total_bytes"`
 }
 
-// GetStats returns count and total content size.
+// GetStats returns count and total content size (text + image files).
 func (s *Service) GetStats() (Stats, error) {
-	var st Stats
-	err := s.db.QueryRow(
-		`SELECT (SELECT COUNT(*) FROM clipboard_entry), COALESCE((SELECT SUM(LENGTH(content)) FROM clipboard_format), 0)`,
-	).Scan(&st.Count, &st.TotalBytes)
+	st, err := s.store.GetStats()
 	if err != nil {
 		return Stats{}, fmt.Errorf("get stats: %w", err)
+	}
+	// Add image file sizes from disk.
+	if s.imageStore != nil {
+		imgBytes, _ := s.imageStore.TotalImageBytes()
+		st.TotalBytes += imgBytes
 	}
 	return st, nil
 }
 
 // Cleanup removes entries older than retainDays and their image files.
 func (s *Service) Cleanup(retainDays int) (int64, error) {
-	rows, err := s.db.Query(
-		`SELECT f.file_path FROM clipboard_format f
-		 JOIN clipboard_entry e ON f.entry_id = e.id
-		 WHERE e.updated_at < `+millisSQL(`-`+fmt.Sprintf("%d", retainDays)+` days`)+` AND f.file_path != ''`,
-	)
-	if err == nil {
-		var paths []string
-		for rows.Next() {
-			var p string
-			rows.Scan(&p)
-			if p != "" {
-				paths = append(paths, p)
-			}
-		}
-		rows.Close()
-		if s.imageStore != nil {
-			s.imageStore.DeleteByEntry(paths)
-			s.imageStore.CleanEmptyDirs()
-		}
+	deleted, paths, err := s.store.Cleanup(retainDays)
+	if s.imageStore != nil && len(paths) > 0 {
+		s.imageStore.DeleteByEntry(paths)
+		s.imageStore.CleanEmptyDirs()
 	}
-
-	result, err := s.db.Exec(
-		`DELETE FROM clipboard_entry WHERE updated_at < ` + millisSQL(fmt.Sprintf("-%d days", retainDays)),
-	)
-	if err != nil {
-		return 0, err
-	}
-	n, _ := result.RowsAffected()
-	return n, nil
+	return deleted, err
 }
 
 // ClearAll deletes all clipboard entries and their image files.
 func (s *Service) ClearAll() error {
-	// Delete all image files first.
-	if s.imageStore != nil {
-		rows, err := s.db.Query(`SELECT file_path FROM clipboard_format WHERE file_path != ''`)
-		if err == nil {
-			var paths []string
-			for rows.Next() {
-				var p string
-				rows.Scan(&p)
-				if p != "" {
-					paths = append(paths, p)
-				}
-			}
-			rows.Close()
-			s.imageStore.DeleteByEntry(paths)
-			s.imageStore.CleanEmptyDirs()
-		}
+	paths, err := s.store.ClearAll()
+	if s.imageStore != nil && len(paths) > 0 {
+		s.imageStore.DeleteByEntry(paths)
+		s.imageStore.CleanEmptyDirs()
 	}
-	_, err := s.db.Exec(`DELETE FROM clipboard_entry`)
 	return err
-}
-
-// millisSQL builds a strftime expression with a modifier for millisecond-precision datetime.
-func millisSQL(mod string) string {
-	return fmt.Sprintf("strftime('%%Y-%%m-%%dT%%H:%%M:%%f', 'now', '%s')", mod)
 }
 
 // GetImageDataURL returns a base64 data URL for the first image format of an entry.
 func (s *Service) GetImageDataURL(entryID int64) (string, error) {
 	log.Printf("[history] GetImageDataURL entry=%d", entryID)
-	var filePath string
-	err := s.db.QueryRow(
-		`SELECT file_path FROM clipboard_format WHERE entry_id = ? AND file_path != '' LIMIT 1`,
-		entryID,
-	).Scan(&filePath)
+	filePath, err := s.store.QueryImageFilePath(entryID)
 	if err != nil {
 		log.Printf("[history] GetImageDataURL entry=%d: no image format row (err=%v)", entryID, err)
-		return "", fmt.Errorf("no image for entry %d", entryID)
-	}
-	if filePath == "" {
-		log.Printf("[history] GetImageDataURL entry=%d: file_path is empty", entryID)
 		return "", fmt.Errorf("no image for entry %d", entryID)
 	}
 	if s.imageStore == nil {
@@ -446,9 +333,18 @@ func sha256Hash(text string, raw []byte) string {
 func buildEntry(id int64, hash, exe, title, createdAt, updatedAt string, formats []clipboard.CapturedFormat) *clipboard.Entry {
 	text := ""
 	for _, f := range formats {
-		if f.FormatType == win.CF_UNICODETEXT {
+		if f.FormatType == clipboard.CF_UNICODETEXT {
 			text = f.Text
 			break
+		}
+	}
+	// Fallback for CF_HDROP-only entries.
+	if text == "" {
+		for _, f := range formats {
+			if f.FormatType == clipboard.CF_HDROP && f.Text != "" {
+				text = f.Text
+				break
+			}
 		}
 	}
 	e := &clipboard.Entry{

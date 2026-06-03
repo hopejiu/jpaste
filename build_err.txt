@@ -1,1 +1,0 @@
-jpaste: open d:\code\jPaste\wails_windows_amd64.syso: The system cannot find the file specified.

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import { Events } from '@wailsio/runtime'
 import { ClipboardProvider } from './context/ClipboardContext'
+import { AppProvider } from './context/AppContext'
 import { EVENTS } from './events'
 import MainPage from './pages/MainPage'
 import SettingsPage from './pages/SettingsPage'
@@ -36,6 +37,7 @@ export default function App() {
   const animClass = animState === 'enter' ? 'app-enter' : 'app-exit'
 
   return (
+    <AppProvider>
     <ClipboardProvider>
       <div ref={appRef} className={animClass} style={{
         width: '100%', height: '100vh', display: 'flex', flexDirection: 'column',
@@ -46,5 +48,6 @@ export default function App() {
         </Routes>
       </div>
     </ClipboardProvider>
+    </AppProvider>
   )
 }

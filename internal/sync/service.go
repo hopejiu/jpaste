@@ -54,7 +54,7 @@ type Service struct {
 	emit       func(name string, data any)
 	basePath   string
 	cfg        Config
-	client     *client
+	client     WebDAVClient
 
 	backoffUntil time.Time
 	backoffCount int
@@ -180,7 +180,7 @@ func (s *Service) SaveConfig(c Config) error {
 }
 
 func (s *Service) TestConnection(c Config) error {
-	return newClient(c).testConnect()
+	return newClient(c).TestConnect()
 }
 
 // --- Push ---
@@ -249,7 +249,7 @@ func (s *Service) doPush(input PushInput) {
 
 	s.emitStatus(StatusSyncing, "")
 
-	if err := cl.putEntry(input.ContentHash, data); err != nil {
+	if err := cl.PutEntry(input.ContentHash, data); err != nil {
 		log.Printf("sync: push %s: %v", input.ContentHash[:12], err)
 		s.backoff()
 		s.mu.Lock()
@@ -295,7 +295,7 @@ func (s *Service) fullPull() {
 
 	s.emitStatus(StatusSyncing, "")
 
-	remoteEntries, err := cl.listEntries()
+	remoteEntries, err := cl.ListEntries()
 	if err != nil {
 		log.Printf("sync: pull list: %v", err)
 		s.emitStatus(StatusOK, "")
@@ -308,20 +308,20 @@ func (s *Service) fullPull() {
 	for _, re := range remoteEntries {
 		var localUpdated string
 		err := s.db.QueryRow(
-			`SELECT updated_at FROM clipboard_entry WHERE content_hash = ?`, re.hash,
+			`SELECT updated_at FROM clipboard_entry WHERE content_hash = ?`, re.Hash,
 		).Scan(&localUpdated)
 
 		if err == sql.ErrNoRows {
 			if err := s.pullEntry(cl, re); err != nil {
-				log.Printf("sync: pull entry %s: %v", re.hash[:12], err)
+				log.Printf("sync: pull entry %s: %v", re.Hash[:12], err)
 			} else {
 				pulled++
 			}
 		} else if err == nil {
 			localT, _ := parseDBTime(localUpdated)
-			if re.lastModified.After(localT) {
+			if re.LastModified.After(localT) {
 				if err := s.pullEntry(cl, re); err != nil {
-					log.Printf("sync: pull update %s: %v", re.hash[:12], err)
+					log.Printf("sync: pull update %s: %v", re.Hash[:12], err)
 				} else {
 					pulled++
 				}
@@ -331,7 +331,7 @@ func (s *Service) fullPull() {
 
 	remoteSet := make(map[string]bool, len(remoteEntries))
 	for _, re := range remoteEntries {
-		remoteSet[re.hash] = true
+		remoteSet[re.Hash] = true
 	}
 
 	rows, err := s.db.Query(`SELECT content_hash, updated_at FROM clipboard_entry ORDER BY updated_at DESC LIMIT 500`)
@@ -369,7 +369,7 @@ func (s *Service) fullPull() {
 			}
 			payload := entryPayload{Formats: sf, UpdatedAt: toRFC3339(updatedAt)}
 			data, _ := json.Marshal(payload)
-			if err := cl.putEntry(hash, data); err != nil {
+			if err := cl.PutEntry(hash, data); err != nil {
 				log.Printf("sync: push missing %s: %v", hash[:12], err)
 			} else {
 				pushed++
@@ -383,8 +383,8 @@ func (s *Service) fullPull() {
 	s.emitStatus(StatusOK, "")
 }
 
-func (s *Service) pullEntry(cl *client, re remoteEntry) error {
-	data, err := cl.getEntry(re.hash)
+func (s *Service) pullEntry(cl WebDAVClient, re RemoteEntry) error {
+	data, err := cl.GetEntry(re.Hash)
 	if err != nil {
 		return err
 	}
@@ -421,7 +421,7 @@ func (s *Service) pullEntry(cl *client, re remoteEntry) error {
 		 ON CONFLICT(content_hash) DO UPDATE SET
 		   updated_at = excluded.updated_at
 		   WHERE excluded.updated_at > updated_at`,
-		re.hash, dbTime, dbTime,
+		re.Hash, dbTime, dbTime,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert entry: %w", err)
@@ -429,7 +429,7 @@ func (s *Service) pullEntry(cl *client, re remoteEntry) error {
 
 	// Get entry ID.
 	var entryID int64
-	if err := s.db.QueryRow(`SELECT id FROM clipboard_entry WHERE content_hash = ?`, re.hash).Scan(&entryID); err != nil {
+	if err := s.db.QueryRow(`SELECT id FROM clipboard_entry WHERE content_hash = ?`, re.Hash).Scan(&entryID); err != nil {
 		return fmt.Errorf("get entry id: %w", err)
 	}
 
@@ -457,7 +457,7 @@ func (s *Service) cleanupCloud() {
 	cfg := s.settingSvc.GetSettings()
 	cutoff := time.Now().AddDate(0, 0, -cfg.RetainDays)
 
-	entries, err := cl.listEntries()
+	entries, err := cl.ListEntries()
 	if err != nil {
 		log.Printf("sync: cleanup list: %v", err)
 		return
@@ -465,9 +465,9 @@ func (s *Service) cleanupCloud() {
 
 	var deleted int
 	for _, re := range entries {
-		if re.lastModified.Before(cutoff) {
-			if err := cl.deleteEntry(re.hash); err != nil {
-				log.Printf("sync: cleanup delete %s: %v", re.hash[:12], err)
+		if re.LastModified.Before(cutoff) {
+			if err := cl.DeleteEntry(re.Hash); err != nil {
+				log.Printf("sync: cleanup delete %s: %v", re.Hash[:12], err)
 			} else {
 				deleted++
 			}
@@ -487,7 +487,7 @@ func (s *Service) PushSettings(data []byte) {
 	if cl == nil {
 		return
 	}
-	if err := cl.putSettings(data); err != nil {
+	if err := cl.PutSettings(data); err != nil {
 		log.Printf("sync: push settings: %v", err)
 	}
 }
@@ -499,7 +499,7 @@ func (s *Service) PullSettings() ([]byte, error) {
 	if cl == nil {
 		return nil, nil
 	}
-	return cl.getSettings()
+	return cl.GetSettings()
 }
 
 // --- Helpers ---

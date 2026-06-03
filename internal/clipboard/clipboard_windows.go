@@ -3,11 +3,14 @@
 package clipboard
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"image"
 	"log"
 	"runtime"
+	"strings"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
@@ -43,7 +46,6 @@ var hwndMessage = win.HWND(^uintptr(2)) // -3
 var (
 	kernel32                          = syscall.NewLazyDLL("kernel32.dll")
 	user32                            = syscall.NewLazyDLL("user32.dll")
-	procRegisterClipboardFormat       = user32.NewProc("RegisterClipboardFormatW")
 	procEnumClipboardFormats          = user32.NewProc("EnumClipboardFormats")
 	procGlobalSize                    = kernel32.NewProc("GlobalSize")
 	procGetClipboardOwner             = user32.NewProc("GetClipboardOwner")
@@ -53,31 +55,16 @@ var (
 	procQueryFullProcessImageName     = kernel32.NewProc("QueryFullProcessImageNameW")
 	procKeybdEvent                    = user32.NewProc("keybd_event")
 	procGetForeground                 = user32.NewProc("GetForegroundWindow")
+	procSetForegroundWindow           = user32.NewProc("SetForegroundWindow")
+	procGetCurrentThreadId            = kernel32.NewProc("GetCurrentThreadId")
+	procGetWindowThreadProcessId      = user32.NewProc("GetWindowThreadProcessId")
+	procAttachThreadInput             = user32.NewProc("AttachThreadInput")
+	procPostMessage                   = user32.NewProc("PostMessageW")
 )
-
-// ---------------------------------------------------------------------------
-// Registered format IDs
-// ---------------------------------------------------------------------------
-
-var (
-	cfHTML uint32
-	cfRTF  uint32
-)
-
-func init() {
-	cfHTML = registerClipboardFormat("HTML Format")
-	cfRTF = registerClipboardFormat("Rich Text Format")
-}
-
-func registerClipboardFormat(name string) uint32 {
-	ptr, _ := syscall.UTF16PtrFromString(name)
-	r, _, _ := procRegisterClipboardFormat.Call(uintptr(unsafe.Pointer(ptr)))
-	return uint32(r)
-}
 
 func isTextFormat(f uint32) bool {
 	switch f {
-	case win.CF_UNICODETEXT, win.CF_TEXT, win.CF_HDROP, cfHTML, cfRTF:
+	case win.CF_UNICODETEXT, win.CF_TEXT:
 		return true
 	}
 	return false
@@ -202,16 +189,24 @@ func clipboardWndProc(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr
 
 func captureAll() CapturedData {
 	if !win.OpenClipboard(0) {
+		log.Println("[clipboard] OpenClipboard failed for capture")
 		return CapturedData{}
 	}
 	defer win.CloseClipboard()
 
 	formats := enumFormats()
+	log.Printf("[clipboard] EnumFormats count=%d", len(formats))
 	var cf []CapturedFormat
 	var textContent string
 
 	for _, f := range formats {
-		if isTextFormat(f) {
+		if f == win.CF_HDROP {
+			txt := readClipboardHDROP()
+			if txt != "" {
+				log.Printf("[clipboard] CF_HDROP parsed: paths=%q", txt)
+				cf = append(cf, CapturedFormat{FormatType: f, Text: txt})
+			}
+		} else if isTextFormat(f) {
 			txt := readClipboardText(f)
 			if txt != "" {
 				cf = append(cf, CapturedFormat{FormatType: f, Text: txt})
@@ -227,6 +222,8 @@ func captureAll() CapturedData {
 		}
 	}
 
+	log.Printf("[clipboard] Captured %d formats, textContent.len=%d", len(cf), len(textContent))
+
 	exe, title := getClipboardSource()
 
 	var hashInput []byte
@@ -235,22 +232,55 @@ func captureAll() CapturedData {
 	} else {
 		for _, f := range cf {
 			if isImageFormat(f.FormatType) {
-				hashInput = f.RawData
+				hashInput = imagePixelHash(f.RawData)
+				break
+			}
+		}
+	}
+	// Fallback for CF_HDROP-only (no CF_UNICODETEXT, no image).
+	if len(hashInput) == 0 {
+		for _, f := range cf {
+			if f.FormatType == win.CF_HDROP && f.Text != "" {
+				hashInput = []byte(f.Text)
 				break
 			}
 		}
 	}
 	if len(hashInput) == 0 {
+		log.Println("[clipboard] No hashable content, returning empty")
 		return CapturedData{}
 	}
 
 	h := sha256.Sum256(hashInput)
+	log.Printf("[clipboard] Capture success: hash=%x source=%q", h[:8], exe)
 	return CapturedData{
 		Formats:     cf,
 		SourceEXE:   exe,
 		SourceTitle: title,
 		PrimaryHash: fmt.Sprintf("%x", h[:]),
 	}
+}
+
+// imagePixelHash decodes DIB raw bytes to image.Image, converts to NRGBA
+// for consistent byte layout, and returns the pixel bytes for hashing.
+// Falls back to raw DIB bytes if decoding fails.
+func imagePixelHash(dib []byte) []byte {
+	if len(dib) < 40 {
+		return dib
+	}
+	bmpData := prependBMPHeader(dib)
+	img, _, err := image.Decode(bytes.NewReader(bmpData))
+	if err != nil {
+		return dib
+	}
+	bounds := img.Bounds()
+	rgba := image.NewNRGBA(bounds)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			rgba.Set(x, y, img.At(x, y))
+		}
+	}
+	return rgba.Pix
 }
 
 func enumFormats() []uint32 {
@@ -376,6 +406,125 @@ func queryFullProcessImageName(hProcess win.HANDLE) string {
 		return ""
 	}
 	return syscall.UTF16ToString(buf[:size])
+}
+
+// readClipboardHDROP parses the CF_HDROP (DROPFILES) format and returns
+// a newline-separated list of file paths.
+func readClipboardHDROP() string {
+	hData := win.GetClipboardData(win.CF_HDROP)
+	if hData == 0 {
+		return ""
+	}
+	hMem := win.HGLOBAL(hData)
+	size, _, _ := procGlobalSize.Call(uintptr(hMem))
+	if size == 0 || size < 20 { // DROPFILES struct is at least 20 bytes
+		return ""
+	}
+	ptr := win.GlobalLock(hMem)
+	if ptr == nil {
+		return ""
+	}
+	defer win.GlobalUnlock(hMem)
+
+	raw := unsafe.Slice((*byte)(ptr), size)
+
+	// DROPFILES: offset 16 is fWide (BOOL, 4 bytes in 64-bit).
+	// struct layout: pFiles(uint32=4), pt(POINT=8), fNC(uint32=4), fWide(uint32=4) = 20 bytes
+	pFiles := binary.LittleEndian.Uint32(raw[0:4])
+	fWide := binary.LittleEndian.Uint32(raw[16:20])
+
+	if pFiles >= uint32(size) {
+		return ""
+	}
+
+	paths := raw[pFiles:]
+	if fWide != 0 {
+		// Unicode paths: each is uint16 array, double-null terminated.
+		var result []string
+		for i := 0; i < len(paths)-1; i += 2 {
+			if paths[i] == 0 && paths[i+1] == 0 {
+				break
+			}
+			// Find end of this string (null terminator).
+			end := i
+			for end+1 < len(paths) && !(paths[end] == 0 && paths[end+1] == 0) {
+				end += 2
+			}
+			u16 := make([]uint16, (end-i)/2)
+			for j := range u16 {
+				u16[j] = binary.LittleEndian.Uint16(paths[i+j*2 : i+j*2+2])
+			}
+			result = append(result, string(utf16.Decode(u16)))
+			i = end + 2 // skip past the null terminator
+		}
+		return strings.Join(result, "\n")
+	} else {
+		// ANSI paths: each is byte array, double-null terminated.
+		var result []string
+		start := 0
+		for start < len(paths) {
+			if paths[start] == 0 {
+				break
+			}
+			end := start
+			for end < len(paths) && paths[end] != 0 {
+				end++
+			}
+			result = append(result, string(paths[start:end]))
+			start = end + 1
+		}
+		return strings.Join(result, "\n")
+	}
+}
+
+// WriteFilePaths writes file paths to the system clipboard as CF_HDROP format.
+func WriteFilePaths(paths []string) bool {
+	// Build CF_HDROP data: DROPFILES struct + Unicode file list.
+	const dropFilesSize = 20
+	var fileList []uint16
+	for _, p := range paths {
+		u16 := utf16.Encode([]rune(p))
+		fileList = append(fileList, u16...)
+		fileList = append(fileList, 0) // null terminator
+	}
+	fileList = append(fileList, 0) // double-null
+
+	dataSize := dropFilesSize + len(fileList)*2
+	hMem := win.GlobalAlloc(gmemMoveable, uintptr(dataSize))
+	if hMem == 0 {
+		return false
+	}
+
+	ptr := win.GlobalLock(hMem)
+	if ptr == nil {
+		win.GlobalFree(hMem)
+		return false
+	}
+
+	dst := unsafe.Slice((*byte)(ptr), dataSize)
+	// DROPFILES header.
+	binary.LittleEndian.PutUint32(dst[0:4], dropFilesSize) // pFiles
+	// pt (8 bytes) — zero
+	// fNC (4 bytes) — zero
+	binary.LittleEndian.PutUint32(dst[16:20], 1) // fWide = TRUE
+
+	// File list.
+	for i, v := range fileList {
+		binary.LittleEndian.PutUint16(dst[dropFilesSize+i*2:], v)
+	}
+
+	win.GlobalUnlock(hMem)
+
+	if !win.OpenClipboard(0) {
+		win.GlobalFree(hMem)
+		return false
+	}
+	defer win.CloseClipboard()
+
+	win.EmptyClipboard()
+	win.SetClipboardData(win.CF_HDROP, win.HANDLE(hMem))
+	log.Printf("[clipboard] WriteFilePaths: wrote %d paths to CF_HDROP", len(paths))
+	return true
 }
 
 // ---------------------------------------------------------------------------

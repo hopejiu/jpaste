@@ -23,15 +23,17 @@ An external file directory at `%APPDATA%/jPaste/images/{YYYY-MM-DD}/` for storin
 ### Entry Tag
 A classification label assigned to a **Clipboard Entry** at capture time. Tags are determined by a mixed strategy: **format-driven** (which clipboard formats are present) and **content-driven** (pattern matching on the text payload). An entry can carry multiple tags simultaneously — e.g., a browser URL copy carries both `url` and `text`.
 
-The six tags:
+The five capture-time tags:
 
 | Tag | Bit | Determination |
 |-----|-----|---------------|
-| `text` | 1 | Has `CF_UNICODETEXT` and no image / rich-text / file-path formats |
-| `rich_text` | 2 | Has `CF_HTML` or `CF_RTF` |
+| `text` | 1 | Has `CF_UNICODETEXT` and no image / file-path formats |
 | `image` | 4 | Has `CF_DIB` or `CF_DIBV5` |
 | `url` | 8 | `CF_UNICODETEXT` starts with `http://` or `https://` |
 | `file` | 16 | Has `CF_HDROP`, or text matches Windows path pattern (`[A-Z]:\` or `\\`) |
+
+### Favorite
+A user-assigned marker, independent of capture-time tags. Stored as `is_favorite BOOLEAN DEFAULT 0` on `clipboard_entry` — a separate column from `tag_mask` because the user's manual choice must survive automated capture-time tag recomputation. The list page provides a **Favorite Tab** (`TAG_FAVORITE`, virtual tag bit 32) alongside the auto-classification tabs. Filtering uses `WHERE is_favorite = 1` or a dedicated backend query, not the `tag_mask` bitmask. Sync: `is_favorite` is included in the remote entry JSON and merged alongside `updated_at` — local always wins for this field to avoid remote overwrites of user intent. |
 
 ### Tag Mask
 A bitmask stored on `clipboard_entry.tag_mask` (INTEGER) encoding an entry's **Entry Tags**. Multiple tags are combined via bitwise OR (e.g., a URL copy: `1 | 8 = 9`). The list page filters by passing a `tagMask` to `GetHistory`; the backend uses `tag_mask & tagMask != 0` for matching. A `tagMask` of 0 means "no filter" (show all).
@@ -111,7 +113,7 @@ Bidirectional merge of clipboard entries and settings across machines via WebDAV
 ## Storage
 
 - **Clipboard history:** `%APPDATA%/jPaste/clipboard.db` (SQLite)
-  - `clipboard_entry`: id, content_hash, source_exe, source_title, tag_mask, created_at, updated_at
+  - `clipboard_entry`: id, content_hash, source_exe, source_title, tag_mask, is_favorite, created_at, updated_at
   - `clipboard_format`: entry_id (FK), format_type, content (TEXT, nullable), file_path (nullable), format_hash
 - **Images:** `%APPDATA%/jPaste/images/{YYYY-MM-DD}/{uuid}.png` — excluded from sync
 - **User settings:** `%APPDATA%/jPaste/settings.json`
@@ -146,6 +148,6 @@ The six built-in action modules:
 - **Lose focus** → auto-hide
 - **Window** starts hidden, first show on app launch
 - **Clipboard monitoring** event-driven via `AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE` on a message-only window (no polling)
-- **List filtering** via tag tabs (全部 / 文本 / 富文本 / 图片 / 网址 / 文件) + keyword search, with cursor-based pagination (20 per page)
+- **List filtering** via tag tabs (全部 / 文本 / 图片 / 网址 / 文件) + keyword search, with cursor-based pagination (20 per page)
 - **Cleanup** removes entries older than configured retention period
 - **Clear All** — a button on the Settings page that deletes all clipboard entries and image files at once
