@@ -18,7 +18,7 @@ export default function MainPage() {
   const {
     entries, search, setSearch,
     activeTag, setActiveTag,
-    hasMore, loading, loadMore,
+    hasMore, loading, loadMore, isRegex, toggleRegex,
     useEntry, deleteEntry, toggleFavorite,
   } = useClipboard()
 
@@ -48,9 +48,21 @@ export default function MainPage() {
     setFocusedIdx(-1)
   }, [setActiveTag])
 
+  const handleOpenEditor = useCallback(async (id) => {
+    try {
+      await FileService.OpenInEditor(id)
+    } catch (err) {
+      console.error('Failed to open in editor:', err)
+    }
+  }, [])
+
+  const closeImagePreview = useCallback(() => setImagePreview(null), [])
+
   const handleKeyDown = useKeyboardNavigation({
     entries, focusedIdx, settings, useEntry, setSearch, setFocusedIdx, inputRef, modal, closeModal,
+    imagePreview, closeImagePreview,
     activeTag, tags: TAGS, onTagChange: handleTagChange, search, listRef,
+    deleteEntry, toggleFavorite, onOpenEditor: handleOpenEditor,
   })
 
   // Auto-focus search + scroll to top on mount.
@@ -137,14 +149,6 @@ export default function MainPage() {
     setModal({ actionId, entry })
   }, [])
 
-  const handleOpenEditor = useCallback(async (id) => {
-    try {
-      await FileService.OpenInEditor(id)
-    } catch (err) {
-      console.error('Failed to open in editor:', err)
-    }
-  }, [])
-
   const handleCopy = useCallback((id) => {
     useEntry(id, 'copy')
   }, [useEntry])
@@ -163,11 +167,16 @@ export default function MainPage() {
           search={search}
           onSearchChange={handleSearchChange}
           syncStatus={syncStatus.status}
+          inputRef={inputRef}
+          isRegex={isRegex}
+          onToggleRegex={toggleRegex}
           styles={{
             searchBox: styles.searchBox,
             searchIcon: styles.searchIcon,
             searchInput: styles.searchInput,
             clearBtn: styles.clearBtn,
+            regexBtn: styles.regexBtn,
+            regexBtnActive: styles.regexBtnActive,
             settingsBtn: styles.settingsBtn,
           }}
         />
@@ -215,7 +224,7 @@ export default function MainPage() {
 
       {/* Footer */}
       <div style={styles.footer}>
-        <span style={styles.footerText}>Alt+V 切换 · Ctrl+1-9 选择 · ← → 标签 · Page↑↓ 翻页 · Esc 隐藏 · 右键更多操作</span>
+        <span style={styles.footerText}>Ctrl+L 搜索 · Ctrl+E 编辑 · Ctrl+1-9 选择 · ←→标签 · Del 删除 · Space 收藏 · Home/End/Page↑↓ · Esc 隐藏</span>
       </div>
 
       {/* Action Modal */}

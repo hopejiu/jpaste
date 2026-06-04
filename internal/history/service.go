@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 type Service struct {
 	store      EntryStore
 	clipboard  ClipboardWriter
-	imageStore *ImageStore
+	imageStore ImageStorer
 
 	performPaste func()
 	onEmit       func(name string, data any)
@@ -51,7 +52,7 @@ func WithNotifyFunc(fn func(title, msg string)) Option {
 func WithSyncPushFunc(fn func(contentHash string, formats []SyncFormat)) Option {
 	return func(s *Service) { s.onSyncPush = fn }
 }
-func WithImageStore(is *ImageStore) Option {
+func WithImageStore(is ImageStorer) Option {
 	return func(s *Service) { s.imageStore = is }
 }
 
@@ -195,6 +196,44 @@ func (s *Service) GetHistory(search string, tagMask int, afterUpdatedAt string, 
 		})
 	}
 	return entries, hasMore, nil
+}
+
+// GetHistoryRegex returns all entries matching a regex pattern.
+// Loads data in batches and filters with Go regexp — no cursor needed since results
+// are typically small subsets of the full history.
+func (s *Service) GetHistoryRegex(pattern string, tagMask int) (entries []clipboard.Entry, err error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("invalid regex: %w", err)
+	}
+
+	cursorAt := ""
+	cursorID := int64(0)
+	batchSize := 200
+	var all []clipboard.Entry
+
+	for {
+		page, hasMore, pageErr := s.GetHistory("", tagMask, cursorAt, cursorID)
+		if pageErr != nil {
+			return nil, pageErr
+		}
+		for _, e := range page {
+			if re.MatchString(e.Content) {
+				all = append(all, e)
+			}
+		}
+		if !hasMore || len(page) == 0 {
+			break
+		}
+		last := page[len(page)-1]
+		cursorAt = last.UpdatedAt
+		cursorID = last.ID
+		// Safety limit: don't scan more than 5000 entries.
+		if len(all) > 5000 || len(page) >= batchSize*10 {
+			break
+		}
+	}
+	return all, nil
 }
 
 // DeleteEntry removes a single entry by ID.

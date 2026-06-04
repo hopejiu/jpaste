@@ -105,16 +105,9 @@ func main() {
 	// File-manager function (wired after app creation).
 	var openFileManagerFn func(string, bool) error
 	fileSvc := fileop.NewService(func(id int64) (string, error) {
-		var c string
-		err := conn.QueryRow(
-			`SELECT COALESCE(f.content, '') FROM clipboard_format f WHERE f.entry_id = ? AND f.format_type = 13`,
-			id,
-		).Scan(&c)
-		if err != nil {
-			err = conn.QueryRow(
-				`SELECT COALESCE(f.content, '') FROM clipboard_format f WHERE f.entry_id = ? AND f.format_type = 15`,
-				id,
-			).Scan(&c)
+		c, err := entryStore.QueryFormatContent(id, clipboard.CF_UNICODETEXT)
+		if err != nil || c == "" {
+			c, err = entryStore.QueryFormatContent(id, clipboard.CF_HDROP)
 		}
 		return c, err
 	}, fileop.WithOpenFileManager(func(path string, selectFile bool) error {

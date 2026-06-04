@@ -1,23 +1,52 @@
 import { useCallback } from 'react'
 import { Window } from '@wailsio/runtime'
 
-export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry, setSearch, setFocusedIdx, inputRef, modal, closeModal, activeTag, tags, onTagChange, search, listRef }) {
+export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry, setSearch, setFocusedIdx, inputRef, modal, closeModal, imagePreview, closeImagePreview, activeTag, tags, onTagChange, search, listRef, deleteEntry, toggleFavorite, onOpenEditor }) {
   const handleKeyDown = useCallback((e) => {
-    // Modal handling: only Escape and PageUp/Down pass through.
+    // Image preview: Esc closes preview, nothing else passes through.
+    if (imagePreview) {
+      if (e.key === 'Escape') { e.preventDefault(); closeImagePreview() }
+      return
+    }
+
+    // Modal handling: only Escape passes through.
     if (modal) {
       if (e.key === 'Escape') { e.preventDefault(); closeModal() }
       return
     }
 
+    // Ctrl+L: focus search input.
+    if (e.ctrlKey && e.key === 'l') {
+      e.preventDefault()
+      inputRef.current?.focus()
+      inputRef.current?.select()
+      return
+    }
+
+    // Ctrl+E: open focused entry in editor.
+    if (e.ctrlKey && e.key === 'e') {
+      e.preventDefault()
+      if (focusedIdx >= 0 && entries[focusedIdx]) {
+        onOpenEditor(entries[focusedIdx].id)
+      }
+      return
+    }
+
+    // Ctrl+Enter: force paste (override default action).
+    if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault()
+      if (focusedIdx >= 0 && entries[focusedIdx]) {
+        useEntry(entries[focusedIdx].id, 'paste')
+      }
+      return
+    }
+
+    // Ctrl+1~9: execute default action on Nth entry.
     if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
       e.preventDefault()
       const idx = parseInt(e.key) - 1
-      console.log('[kb] Ctrl+' + e.key + ' pressed, hasFocus=' + document.hasFocus() +
-        ', idx=' + idx + ', entries=' + entries.length + ', action=' + settings.default_action)
       if (idx < entries.length) {
-        const entry = entries[idx]
-        console.log('[kb] calling useEntry id=' + entry.id + ' action=' + settings.default_action)
-        useEntry(entry.id, settings.default_action)
+        useEntry(entries[idx].id, settings.default_action)
       }
       return
     }
@@ -45,9 +74,53 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       return
     }
 
+    // Enter: execute default action on focused entry.
     if (e.key === 'Enter' && focusedIdx >= 0) {
       e.preventDefault()
       useEntry(entries[focusedIdx].id, settings.default_action)
+      return
+    }
+
+    // Delete: remove focused entry.
+    if (e.key === 'Delete' && focusedIdx >= 0) {
+      e.preventDefault()
+      const id = entries[focusedIdx].id
+      const newLen = entries.length - 1
+      setFocusedIdx(prev => prev >= newLen ? Math.max(newLen - 1, -1) : prev)
+      deleteEntry(id)
+      return
+    }
+
+    // Space: toggle favorite on focused entry.
+    if (e.key === ' ' && focusedIdx >= 0) {
+      e.preventDefault()
+      const entry = entries[focusedIdx]
+      toggleFavorite(entry.id, !entry.is_favorite)
+      return
+    }
+
+    // Tab: toggle focus between search and list.
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (document.activeElement === inputRef.current) {
+        setFocusedIdx(prev => prev >= 0 ? prev : 0)
+      } else {
+        setFocusedIdx(-1)
+        inputRef.current?.focus()
+      }
+      return
+    }
+
+    // Home / End: scroll to top / bottom of entry list.
+    if (e.key === 'Home') {
+      e.preventDefault()
+      listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (e.key === 'End') {
+      e.preventDefault()
+      const list = listRef.current
+      if (list) list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })
       return
     }
 
@@ -61,7 +134,7 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       return
     }
 
-    // Escape: close modal → clear search → hide window.
+    // Escape: clear search → hide window.
     if (e.key === 'Escape') {
       e.preventDefault()
       if (search) {
@@ -69,16 +142,16 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
         setFocusedIdx(-1)
         inputRef.current?.blur()
       } else {
-        // Hide window via Wails runtime.
         Window.Hide()
       }
       return
     }
 
+    // Any letter key focuses search input.
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       inputRef.current?.focus()
     }
-  }, [entries, focusedIdx, useEntry, settings, setSearch, setFocusedIdx, inputRef, modal, closeModal, activeTag, tags, onTagChange, search, listRef])
+  }, [entries, focusedIdx, useEntry, settings, setSearch, setFocusedIdx, inputRef, modal, closeModal, imagePreview, closeImagePreview, activeTag, tags, onTagChange, search, listRef, deleteEntry, toggleFavorite, onOpenEditor])
 
   return handleKeyDown
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { Window } from '@wailsio/runtime'
 import JSONEditor from 'jsoneditor'
 import 'jsoneditor/dist/jsoneditor.css'
 
@@ -91,6 +92,20 @@ export default function JsonViewPage() {
         editorRef.current = null
       }
     }
+  }, [])
+
+  // Esc closes the JSON viewer window (only when no input is focused,
+  // so jsoneditor's own search/code Esc still works).
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== 'Escape') return
+      const tag = document.activeElement?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return
+      e.preventDefault()
+      Window.Hide()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
   }, [])
 
   // Always render the container div — load/error as overlay avoids

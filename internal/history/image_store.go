@@ -13,10 +13,26 @@ import (
 	_ "golang.org/x/image/bmp"
 )
 
+// ImageStorer abstracts image persistence for clipboard entries.
+// The production adapter is ImageStore (filesystem); tests use an in-memory fake.
+type ImageStorer interface {
+	Save(raw []byte, today string) (string, error)
+	ReadDIB(pngRelPath string) ([]byte, error)
+	ReadImage(relPath string) ([]byte, error)
+	TotalImageBytes() (int64, error)
+	DeleteByEntry(paths []string)
+	DeleteByDate(dateFolder string)
+	CleanEmptyDirs()
+	AppDataPath() string
+}
+
 // ImageStore saves clipboard image payloads to disk and cleans them up.
 type ImageStore struct {
 	basePath string
 }
+
+// Ensure ImageStore implements ImageStorer.
+var _ ImageStorer = (*ImageStore)(nil)
 
 // NewImageStore creates an ImageStore rooted at %APPDATA%/jPaste/images.
 func NewImageStore(appData string) *ImageStore {

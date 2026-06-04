@@ -25,6 +25,15 @@ export const styles = {
     color: 'var(--color-muted)', cursor: 'pointer', borderRadius: 'var(--radius-md)',
     flexShrink: 0,
   },
+  regexBtn: {
+    width: '36px', height: '36px', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', border: 'none', background: 'transparent',
+    color: 'var(--color-muted)', cursor: 'pointer', borderRadius: 'var(--radius-md)',
+    flexShrink: 0, transition: 'all var(--transition-fast)',
+  },
+  regexBtnActive: {
+    color: 'var(--color-primary)', background: 'rgba(99,102,241,0.12)',
+  },
   tabBar: {
     display: 'flex', gap: '4px', padding: '8px 16px',
     borderBottom: '1px solid var(--color-border)', flexShrink: 0, overflowX: 'auto',
