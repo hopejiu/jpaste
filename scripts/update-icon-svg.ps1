@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path $PSScriptRoot -Parent
 
 $SvgPath = Join-Path $Root "jpaste-logo.svg"
-$PngPath = Join-Path $Root "jpaste-logo.png"
+$PngPath = Join-Path $Root "paste.png"
 $IcoPath = Join-Path $Root "build\windows\icon.ico"
 $GoDir = Join-Path $PSScriptRoot "rasterize-logo"
 
@@ -25,9 +25,9 @@ if (-not (Test-Path $GoDir)) {
 Write-Host "=== 1/3 Rasterize SVG → PNG + .ico (Go/oksvg) ===" -ForegroundColor Cyan
 Write-Host "  Running: go run ./scripts/rasterize-logo/"
 
-Push-Location $Root
+Push-Location $GoDir
 try {
-    go run ./scripts/rasterize-logo/
+    go run .
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Go rasterization failed (exit=$LASTEXITCODE)."
         exit 1
@@ -86,7 +86,6 @@ try {
 Write-Host ""
 Write-Host "=== Complete ===" -ForegroundColor Green
 Write-Host "  Source: jpaste-logo.svg"
-Write-Host "  PNG:    jpaste-logo.png (1024×1024)"
+Write-Host "  PNG:    paste.png (1024×1024, tray icon)"
 Write-Host "  ICO:    build/windows/icon.ico (16/24/32/48/64/128/256)"
-Write-Host "  Tray:   paste.png"
 Write-Host "  Build:  task build"

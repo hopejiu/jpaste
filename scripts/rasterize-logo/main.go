@@ -20,10 +20,9 @@ import (
 )
 
 const (
-	svgPath     = "jpaste-logo.svg"
-	pngOut      = "jpaste-logo.png"
-	pasteOut    = "paste.png"
-	icoOut      = "build/windows/icon.ico"
+	svgPath     = "../../jpaste-logo.svg"
+	pngOut      = "../../paste.png" // go:embed tray icon + wails3 generate icons input
+	icoOut      = "../../build/windows/icon.ico"
 	renderHiDPI = 1024
 )
 
@@ -53,11 +52,7 @@ func run() error {
 	if err := writePNG(pngOut, hiRes); err != nil {
 		return err
 	}
-	fmt.Printf("  Saved: %s\n", pngOut)
-	if err := writePNG(pasteOut, hiRes); err != nil {
-		return err
-	}
-	fmt.Printf("  Saved: %s (tray)\n", pasteOut)
+	fmt.Printf("  Saved: %s (go:embed tray icon)\n", pngOut)
 
 	// 3. Render each icon size & pack ICO (fresh parse per size)
 	fmt.Printf("\n=== Generate ICO (%v) ===\n", icoSizes)
@@ -94,11 +89,12 @@ func run() error {
 // gradientFallback maps gradient id → solid fallback color.
 // oksvg has limited gradient support; this ensures structural shapes render.
 var gradientFallback = map[string]string{
-	"board":    "#7C3AED",
-	"clip":     "#8B5CF6",
-	"paper":    "#FFFFFF",
-	"ribbon":   "#F472B6",
-	"hairGrad": "#22D3EE",
+	"board":      "#7C3AED",
+	"clip":       "#8B5CF6",
+	"paper":      "#FFFFFF",
+	"ribbon":     "#F472B6",
+	"hairGrad":   "#22D3EE",
+	"data-lines": "#F5F3FF", // paper background color (pattern fill, opacity handled in SVG)
 }
 
 // reGradientRef matches fill="url(#name)" or stroke="url(#name)" references.

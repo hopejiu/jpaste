@@ -1,148 +1,100 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="jPaste logo">
-  <!--
-    jPaste Logo — Clipboard Mascot Modern
-    Type: Pictorial Mark + Mascot Modern
-    Palette: Modern Purple (#7C3AED / #A78BFA / #F472B6)
-    Accent:  Cyan (#22D3EE)
-    BG:      White (#FFFFFF)
-    
-    Scalability checklist:
-    ✓ Recognizable at 16×16 (clipboard silhouette + eyes as dots)
-    ✓ Works in single color (purple outline version)
-    ✓ Clear in grayscale (high contrast shapes)
-    ✓ No sub-16px details
-  -->
-
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="jPaste logo optimized">
   <defs>
-    <!-- Board gradient -->
+    <!-- 主板渐变 -->
     <linearGradient id="board" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#A78BFA"/>
       <stop offset="100%" stop-color="#7C3AED"/>
     </linearGradient>
-    <!-- Clip gradient (subtle J highlight) -->
+    <!-- 夹子渐变 -->
     <linearGradient id="clip" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#C4B5FD"/>
       <stop offset="100%" stop-color="#8B5CF6"/>
     </linearGradient>
-    <!-- Inner paper -->
+    <!-- 纸张渐变 -->
     <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#FFFFFF"/>
       <stop offset="100%" stop-color="#F5F3FF"/>
     </linearGradient>
-    <!-- Drop shadow (board) -->
-    <filter id="shadow" x="-8%" y="-4%" width="116%" height="112%">
-      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#7C3AED" flood-opacity="0.25"/>
+    <!-- 阴影滤镜 -->
+    <filter id="shadow" x="-10%" y="-5%" width="120%" height="115%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#7C3AED" flood-opacity="0.2"/>
     </filter>
+    <!-- 数据流线条图案 -->
+    <pattern id="data-lines" patternUnits="userSpaceOnUse" width="20" height="10">
+      <path d="M0,5 Q5,0 10,5 T20,5" fill="none" stroke="#E8E5F8" stroke-width="1.5" stroke-linecap="round"/>
+    </pattern>
   </defs>
 
-  <!-- White canvas circle (optional badge background) -->
+  <!-- 背景圆 -->
   <circle cx="256" cy="256" r="244" fill="#FAFAFE"/>
 
   <!-- ============================================ -->
-  <!--  CLIPBOARD BODY                               -->
+  <!--  剪贴板主体 (Clipboard Board)                -->
   <!-- ============================================ -->
   <g filter="url(#shadow)">
-    <!-- Main board — rounded rectangle -->
-    <rect x="132" y="140" width="248" height="288" rx="32" ry="32" fill="url(#board)"/>
-
-    <!-- Inner glow line -->
-    <rect x="136" y="144" width="240" height="280" rx="28" ry="28" fill="none" stroke="#DDD6FE" stroke-width="1.5" opacity="0.5"/>
+    <!-- 圆角矩形板 -->
+    <rect x="120" y="130" width="272" height="300" rx="36" ry="36" fill="url(#board)"/>
+    <!-- 内部高光 -->
+    <rect x="126" y="136" width="260" height="288" rx="30" ry="30" fill="none" stroke="#DDD6FE" stroke-width="1" opacity="0.4"/>
   </g>
 
   <!-- ============================================ -->
-  <!--  CLIP (J-shaped at top)                      -->
+  <!--  剪贴板夹子 (Clip - 更具象的J形/回形针)       -->
+  <!-- ============================================ -->
+  <g transform="translate(0, -10)">
+    <!-- 夹子上半部分 -->
+    <path d="M180,160 C200,130 300,130 320,160 L310,175 C295,155 215,155 200,175 Z" fill="url(#clip)" stroke="#EDE9FE" stroke-width="1.5"/>
+    <!-- 夹子下半部分 (阴影) -->
+    <path d="M200,175 L310,175 C300,195 210,195 200,175 Z" fill="#8B5CF6" opacity="0.3"/>
+  </g>
+
+  <!-- ============================================ -->
+  <!--  纸张内容 (Paper with Data)                 -->
   <!-- ============================================ -->
   <g>
-    <!-- Main clip body -->
-    <rect x="190" y="106" width="132" height="52" rx="18" ry="18" fill="url(#clip)"/>
-    <!-- Clip highlight bar -->
-    <rect x="200" y="114" width="112" height="6" rx="3" fill="#EDE9FE" opacity="0.5"/>
-    <!-- Clip grip grooves -->
-    <rect x="200" y="126" width="112" height="5" rx="2.5" fill="#EDE9FE" opacity="0.35"/>
-    <rect x="200" y="135" width="112" height="5" rx="2.5" fill="#EDE9FE" opacity="0.25"/>
-    <rect x="200" y="144" width="112" height="4" rx="2" fill="#EDE9FE" opacity="0.18"/>
+    <!-- 纸张背景 -->
+    <rect x="148" y="200" width="216" height="190" rx="14" ry="14" fill="url(#paper)" stroke="#E0D9FF" stroke-width="0.5"/>
+    
+    <!-- 数据流线条 (使用Pattern填充，更有科技感) -->
+    <rect x="158" y="220" width="196" height="150" rx="10" fill="url(#data-lines)" opacity="0.6"/>
+    
+    <!-- 光标闪烁效果 (模拟输入状态) -->
+    <rect x="168" y="225" width="2" height="18" fill="#EC4899" opacity="0.7"/>
   </g>
 
   <!-- ============================================ -->
-  <!--  PAPER INSERT (white area)                   -->
+  <!--  二次元面部 (Kawaii Face - 睛眼/星星眼)      -->
   <!-- ============================================ -->
-  <g>
-    <!-- Paper background -->
-    <rect x="150" y="196" width="212" height="210" rx="16" ry="16" fill="url(#paper)"/>
-
-    <!-- Paper texture lines (ghost) -->
-    <line x1="166" y1="236" x2="310" y2="236" stroke="#E8E5F8" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="166" y1="252" x2="310" y2="252" stroke="#E8E5F8" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="166" y1="268" x2="296" y2="268" stroke="#E8E5F8" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="166" y1="284" x2="304" y2="284" stroke="#E8E5F8" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="166" y1="300" x2="280" y2="300" stroke="#E8E5F8" stroke-width="2.5" stroke-linecap="round"/>
-    <line x1="166" y1="316" x2="260" y2="316" stroke="#E8E5F8" stroke-width="2.5" stroke-linecap="round"/>
+  <g transform="translate(256, 280)">
+    <!-- 左眼 (星星眼) -->
+    <ellipse cx="-32" cy="-10" rx="16" ry="18" fill="#1E1B4B">
+      <animate attributeName="opacity" values="0.8;1;0.8" dur="3s" repeatCount="indefinite"/>
+    </ellipse>
+    <!-- 左星星虹膜 -->
+    <polygon cx="-32" cy="-16" points="0,-8 2.5,-2.5 8,0 2.5,2.5 0,8 -2.5,2.5 -8,0 -2.5,-2.5" fill="#22D3EE" transform="rotate(-20)">
+      <animateTransform attributeName="transform" type="rotate" values="0,0,0; 360,0,0" dur="10s" repeatCount="indefinite"/>
+    </polygon>
+    
+    <!-- 右眼 (眨眼效果) -->
+    <ellipse cx="32" cy="-10" rx="16" ry="18" fill="#1E1B4B">
+      <!-- 快速眨眼动画 -->
+      <animate attributeName="ry" values="18;4;18" dur="2s" begin="1s" repeatCount="indefinite"/>
+    </ellipse>
+    <!-- 右眼高光 -->
+    <circle cx="36" cy="-14" r="5" fill="#FFFFFF"/>
   </g>
 
   <!-- ============================================ -->
-  <!--  KAWAII FACE (minimal anime eyes)            -->
+  <!--  粘贴图标 (Paste Icon - 动态感)              -->
   <!-- ============================================ -->
-  <g transform="translate(256, 284)">
-    <!-- Left eye — large anime eye -->
-    <ellipse cx="-30" cy="-8" rx="18" ry="22" fill="#1E1B4B"/>
-    <!-- Left iris (cyan accent) -->
-    <ellipse cx="-30" cy="-14" rx="9" ry="11" fill="#22D3EE" opacity="0.85"/>
-    <!-- Left pupil -->
-    <circle cx="-30" cy="-12" r="6" fill="#1E1B4B"/>
-    <!-- Left catchlight 1 -->
-    <circle cx="-26" cy="-18" r="4.5" fill="#FFFFFF"/>
-    <!-- Left catchlight 2 -->
-    <circle cx="-34" cy="-8" r="2.5" fill="#FFFFFF" opacity="0.7"/>
-
-    <!-- Right eye — large anime eye -->
-    <ellipse cx="30" cy="-8" rx="18" ry="22" fill="#1E1B4B"/>
-    <!-- Right iris (cyan accent) -->
-    <ellipse cx="30" cy="-14" rx="9" ry="11" fill="#22D3EE" opacity="0.85"/>
-    <!-- Right pupil -->
-    <circle cx="30" cy="-12" r="6" fill="#1E1B4B"/>
-    <!-- Right catchlight 1 -->
-    <circle cx="34" cy="-18" r="4.5" fill="#FFFFFF"/>
-    <!-- Right catchlight 2 -->
-    <circle cx="26" cy="-8" r="2.5" fill="#FFFFFF" opacity="0.7"/>
-
-    <!-- Blush (soft pink ellipses) -->
-    <ellipse cx="-48" cy="14" rx="12" ry="7" fill="#F472B6" opacity="0.3"/>
-    <ellipse cx="48" cy="14" rx="12" ry="7" fill="#F472B6" opacity="0.3"/>
-
-    <!-- Tiny kawaii mouth -->
-    <path d="M-5,18 Q0,24 5,18" fill="none" stroke="#EC4899" stroke-width="2" stroke-linecap="round"/>
-    <!-- Tongue dot -->
-    <ellipse cx="0" cy="21.5" rx="2.5" ry="2" fill="#F472B6" opacity="0.5"/>
-  </g>
-
-  <!-- ============================================ -->
-  <!--  PASTE ICON (bottom-right paper area)        -->
-  <!-- ============================================ -->
-  <g transform="translate(320, 376)" opacity="0.9">
-    <!-- Mini clipboard icon representing paste action -->
-    <rect x="-16" y="-17" width="32" height="34" rx="5" fill="#A78BFA"/>
-    <rect x="-9" y="-11" width="18" height="2" rx="1" fill="#FFFFFF" opacity="0.6"/>
-    <rect x="-9" y="-5"  width="14" height="2" rx="1" fill="#FFFFFF" opacity="0.45"/>
-    <rect x="-9" y="1"   width="16" height="2" rx="1" fill="#FFFFFF" opacity="0.3"/>
-    <!-- Mini clip -->
-    <rect x="-7" y="-22" width="14" height="7" rx="2" fill="#8B5CF6"/>
-    <!-- Paste arrow -->
-    <path d="M10,-6 L14,0 L10,6" fill="none" stroke="#22D3EE" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
-
-  <!-- ============================================ -->
-  <!--  SPARKLE (anime accent, 1 only — minimal)    -->
-  <!-- ============================================ -->
-  <g transform="translate(396, 150)" opacity="0.55">
-    <path d="M0,-12 L2.5,-3.5 L12,0 L2.5,3.5 L0,12 L-2.5,3.5 L-12,0 L-2.5,-3.5 Z" fill="#22D3EE"/>
-  </g>
-
-  <!-- ============================================ -->
-  <!--  "J" BADGE (bottom center, subtle)           -->
-  <!-- ============================================ -->
-  <g transform="translate(256, 446)">
-    <ellipse cx="0" cy="0" rx="22" ry="14" fill="#A78BFA" opacity="0.15"/>
-    <text x="0" y="5" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="700" fill="#7C3AED" opacity="0.55">J</text>
+  <g transform="translate(330, 360)">
+    <!-- 粘贴板图标 -->
+    <rect x="-14" y="-14" width="28" height="30" rx="4" fill="#A78BFA" opacity="0.9"/>
+    <!-- 粘贴箭头 -->
+    <path d="M-5,-8 L0,-2 L5,-8" fill="none" stroke="#22D3EE" stroke-width="2.5" stroke-linecap="round">
+      <!-- 箭头跳动动画 -->
+      <animateTransform attributeName="transform" type="translate" values="0,0; 0,-2; 0,0" dur="1.5s" repeatCount="indefinite"/>
+    </path>
   </g>
 
 </svg>

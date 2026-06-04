@@ -35,15 +35,18 @@ wails3 build
 
 ### App Icon
 
-Source: `jpaste-logo.svg`. Generate from SVG:
+Source: `jpaste-logo.svg`. Generate all icon assets with one command:
 
 ```powershell
 .\scripts\update-icon-svg.ps1
 ```
 
-This runs a pure-Go rasterizer (`scripts/rasterize-logo/`) that renders the SVG at all required sizes, packs a multi-resolution `.ico`, updates `paste.png` for the tray icon, and regenerates `wails_windows_amd64.syso`.
+Output files:
+- `paste.png` — tray icon, embedded by `main.go` via `//go:embed`
+- `build/windows/icon.ico` — multi-resolution (16–256px) app icon
+- `wails_windows_amd64.syso` — Windows build resource
 
-No external dependencies — `oksvg` + `rasterx` are pure Go, Windows .ico built from scratch.
+Rasterization is pure Go (`scripts/rasterize-logo/`), no external dependencies. Gradients in the SVG are flattened to solid colors for compatibility with `oksvg`.
 
 ## Tech Stack
 
