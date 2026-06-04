@@ -1,12 +1,14 @@
-import { Copy, ClipboardPaste, Star, Image, ZoomIn, CheckCircle } from 'lucide-react'
+import { Copy, ClipboardPaste, Star, Image, ZoomIn, CheckCircle, File, FileText } from 'lucide-react'
 import { formatTime, previewContent } from '../utils/format'
 import ActionButtons from './ActionButtons'
 
 const CF_DIB = 8
 const CF_DIBV5 = 17
+const CF_HDROP = 15
 
 const isImageEntry = (entry) => entry.formats?.some(f => f.format_type === CF_DIB || f.format_type === CF_DIBV5)
 const isImageOnly = (entry) => entry.formats?.length > 0 && entry.formats.every(f => f.format_type === CF_DIB || f.format_type === CF_DIBV5)
+const isFileEntry = (entry) => entry.formats?.some(f => f.format_type === CF_HDROP)
 const extractAppName = (exe) => {
   if (!exe) return ''
   const parts = exe.split('\\')
@@ -44,6 +46,7 @@ export default function EntryItem({
   const time = formatTime(entry.updated_at)
   const hasImg = isImageEntry(entry)
   const imgOnly = isImageOnly(entry)
+  const isFile = isFileEntry(entry)
 
   return (
     <div
@@ -96,7 +99,8 @@ export default function EntryItem({
           <div style={styles.itemContentRow}>
             <div style={styles.itemText}>
               {previewContent(entry.content)}
-              {hasImg && <Image size={14} style={{ marginLeft: 6, opacity: 0.4, verticalAlign: 'middle' }} />}
+              {isFile && <span style={styles.fileBadge} title="文件"><File size={12} /> 文件</span>}
+              {hasImg && !isFile && <Image size={14} style={{ marginLeft: 6, opacity: 0.4, verticalAlign: 'middle' }} />}
             </div>
             {hasImg && thumb?.url && (
               <img src={thumb.url} alt="" style={styles.thumbInline} />
@@ -118,6 +122,18 @@ export default function EntryItem({
               actionIds={detectedActions}
               onClick={(actionId) => onActionClick(actionId, entry)}
             />
+          )}
+          {isFile && (
+            <button
+              style={styles.copyTextBtn}
+              onClick={(e) => {
+                e.stopPropagation()
+                navigator.clipboard.writeText(entry.content)
+              }}
+              title="复制路径文本"
+            >
+              <FileText size={14} />
+            </button>
           )}
           {!imgOnly && (
             <button

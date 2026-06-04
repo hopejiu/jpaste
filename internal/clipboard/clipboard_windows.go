@@ -262,13 +262,30 @@ func captureAll() CapturedData {
 	}
 
 	h := sha256.Sum256(hashInput)
-	log.Printf("[clipboard] Capture success: hash=%x source=%q", h[:8], exe)
+	hashStr := fmt.Sprintf("%x", h[:])
+
+	// File entries (CF_HDROP) get a distinct hash prefix to coexist
+	// with plain-text copies of the same path content.
+	if hasHdropFormat(cf) {
+		hashStr = "hdrop:" + hashStr
+	}
+
+	log.Printf("[clipboard] Capture success: hash=%s source=%q", hashStr[:8], exe)
 	return CapturedData{
 		Formats:     cf,
 		SourceEXE:   exe,
 		SourceTitle: title,
-		PrimaryHash: fmt.Sprintf("%x", h[:]),
+		PrimaryHash: hashStr,
 	}
+}
+
+func hasHdropFormat(formats []CapturedFormat) bool {
+	for _, f := range formats {
+		if f.FormatType == win.CF_HDROP {
+			return true
+		}
+	}
+	return false
 }
 
 // imagePixelHash decodes DIB raw bytes to image.Image, converts to NRGBA

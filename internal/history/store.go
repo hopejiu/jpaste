@@ -50,6 +50,9 @@ type EntryStore interface {
 
 	// ClearAll removes all entries, returning associated image paths.
 	ClearAll() (imagePaths []string, err error)
+
+	// HasFileFormatByHash checks if an entry (by content_hash) has CF_HDROP formats.
+	HasFileFormatByHash(hash string) (bool, error)
 }
 
 // EntryRow is a single row from the clipboard_entry table.
@@ -298,6 +301,15 @@ func (s *sqliteStore) ClearAll() ([]string, error) {
 	}
 	_, err = s.db.Exec(`DELETE FROM clipboard_entry`)
 	return nil, err
+}
+
+func (s *sqliteStore) HasFileFormatByHash(hash string) (bool, error) {
+	var count int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM clipboard_format WHERE entry_id = (SELECT id FROM clipboard_entry WHERE content_hash = ?) AND format_type = 15`,
+		hash,
+	).Scan(&count)
+	return count > 0, err
 }
 
 // rowsPathOrNil extracts file paths from a *sql.Rows if available.

@@ -75,14 +75,31 @@ func (s *Service) CaptureEntry(data clipboard.CapturedData) (*clipboard.Entry, b
 	now := nowMillis()
 	tagMask := clipboard.ComputeTagMask(data.Formats)
 
-	// Try dedup: refresh timestamp if hash exists.
-	deduped, err := s.store.UpsertDedup(data.PrimaryHash, data.SourceEXE, data.SourceTitle, tagMask, now)
-	if err != nil {
-		log.Printf("[history] dedup err: %v", err)
+	// File copies (CF_HDROP) are exempt from dedup — they carry richer format
+	// data that should always create a fresh entry even if the text content
+	// matches a previous plain-text copy.
+	hasFileFormat := false
+	for _, f := range data.Formats {
+		if clipboard.IsHdropFormat(f.FormatType) {
+			hasFileFormat = true
+			break
+		}
 	}
-	if deduped {
-		s.pushToSync(data.PrimaryHash, data.Formats)
-		return nil, false
+
+	if !hasFileFormat {
+		// Don't dedup plain-text copies of previously-copied files.
+		// Existing file entries carry CF_HDROP data that text-only copies lack.
+		existingHasFile, _ := s.store.HasFileFormatByHash(data.PrimaryHash)
+		if !existingHasFile {
+			deduped, err := s.store.UpsertDedup(data.PrimaryHash, data.SourceEXE, data.SourceTitle, tagMask, now)
+			if err != nil {
+				log.Printf("[history] dedup err: %v", err)
+			}
+			if deduped {
+				s.pushToSync(data.PrimaryHash, data.Formats)
+				return nil, false
+			}
+		}
 	}
 
 	// Insert new entry.

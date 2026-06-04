@@ -92,6 +92,19 @@ export const styles = {
     color: 'var(--color-muted)', cursor: 'pointer', borderRadius: '4px',
     transition: 'all var(--transition-fast)',
   },
+  copyTextBtn: {
+    width: '28px', height: '28px', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', border: 'none', background: 'transparent',
+    color: 'var(--color-muted)', cursor: 'pointer', borderRadius: '4px',
+    transition: 'all var(--transition-fast)',
+  },
+  fileBadge: {
+    display: 'inline-flex', alignItems: 'center', gap: '3px',
+    marginLeft: '6px', padding: '1px 6px',
+    background: 'rgba(245,158,11,0.12)', color: '#D97706',
+    borderRadius: '999px', fontSize: '10px', fontWeight: 600,
+    verticalAlign: 'middle', whiteSpace: 'nowrap',
+  },
   footer: {
     borderTop: '1px solid var(--color-border)', padding: '8px 16px',
     textAlign: 'center', flexShrink: 0,
