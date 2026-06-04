@@ -351,6 +351,17 @@ func (s *Service) ClearAll() error {
 	return err
 }
 
+// GetEntryContent returns the CF_UNICODETEXT content for the given entry ID.
+func (s *Service) GetEntryContent(id int64) (string, error) {
+	return s.store.QueryFormatContent(id, clipboard.CF_UNICODETEXT)
+}
+
+// GetImageList returns all image entry IDs matching the given tag mask and search,
+// ordered by updated_at DESC. Used by the image viewer for prev/next navigation.
+func (s *Service) GetImageList(tagMask int, search string) ([]int64, error) {
+	return s.store.QueryImageEntryIDs(tagMask, search)
+}
+
 // GetImageDataURL returns a base64 data URL for the first image format of an entry.
 func (s *Service) GetImageDataURL(entryID int64) (string, error) {
 	log.Printf("[history] GetImageDataURL entry=%d", entryID)

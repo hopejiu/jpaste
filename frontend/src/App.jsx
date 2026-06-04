@@ -7,6 +7,7 @@ import { EVENTS } from './events'
 import MainPage from './pages/MainPage'
 import SettingsPage from './pages/SettingsPage'
 import JsonViewPage from './pages/JsonViewPage'
+import ImageViewPage from './pages/ImageViewPage'
 
 export default function App() {
   const navigate = useNavigate()
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="/" element={<MainPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/json-view" element={<JsonViewPage />} />
+          <Route path="/image-view" element={<ImageViewPage />} />
         </Routes>
       </div>
     </ClipboardProvider>

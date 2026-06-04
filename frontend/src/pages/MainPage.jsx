@@ -3,6 +3,7 @@ import { useClipboard, TAGS } from '../context/ClipboardContext'
 import { useApp } from '../context/AppContext'
 import { Service as FileService } from '../../bindings/jpaste/internal/fileop'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
+import { Service as ImageViewerService } from '../../bindings/jpaste/internal/imageviewer'
 import { getById } from '../actions'
 import { useActionDetection } from '../hooks/useActionDetection'
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation'
@@ -10,7 +11,6 @@ import { useContextMenu } from '../hooks/useContextMenu'
 import SearchBar from '../components/SearchBar'
 import TagTabs from '../components/TagTabs'
 import EntryList from '../components/EntryList'
-import ImagePreview from '../components/ImagePreview'
 import ActionModal from '../components/ActionModal'
 import { styles } from './MainPage.styles'
 
@@ -26,7 +26,6 @@ export default function MainPage() {
 
   const [focusedIdx, setFocusedIdx] = useState(-1)
   const [modal, setModal] = useState(null)
-  const [imagePreview, setImagePreview] = useState(null)
   const [animatingId, setAnimatingId] = useState(null)
 
   const inputRef = useRef(null)
@@ -56,11 +55,8 @@ export default function MainPage() {
     }
   }, [])
 
-  const closeImagePreview = useCallback(() => setImagePreview(null), [])
-
   const handleKeyDown = useKeyboardNavigation({
     entries, focusedIdx, settings, useEntry, setSearch, setFocusedIdx, inputRef, modal, closeModal,
-    imagePreview, closeImagePreview,
     activeTag, tags: TAGS, onTagChange: handleTagChange, search, listRef,
     deleteEntry, toggleFavorite, onOpenEditor: handleOpenEditor,
   })
@@ -130,20 +126,14 @@ export default function MainPage() {
     useEntry(entry.id, settings.default_action)
   }, [useEntry, settings.default_action])
 
-  const handleImageClick = useCallback(async (entry) => {
-    setImagePreview({ url: '', loading: true })
-    try {
-      const url = await HistoryService.GetImageDataURL(entry.id)
-      setImagePreview({ url, loading: false })
-    } catch {
-      setImagePreview(null)
-    }
-  }, [])
+  const handleImageClick = useCallback((entry) => {
+    ImageViewerService.OpenImageViewer(entry.id, activeTag, search)
+  }, [activeTag, search])
 
   const handleActionClick = useCallback((actionId, entry) => {
     const action = getById(actionId)
     if (action?.handler) {
-      action.handler(entry.content)
+      action.handler(entry.content, entry.id)
       return
     }
     setModal({ actionId, entry })
@@ -242,11 +232,6 @@ export default function MainPage() {
         )}
       </ActionModal>
 
-      {/* Image Preview */}
-      <ImagePreview
-        imagePreview={imagePreview}
-        onClose={() => setImagePreview(null)}
-      />
     </div>
   )
 }

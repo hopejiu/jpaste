@@ -1,7 +1,7 @@
 import { Service as JsonViewerService } from '../../bindings/jpaste/internal/jsonviewer'
 
-function openJsonViewer(content) {
-  JsonViewerService.OpenJsonViewer(content)
+function openJsonViewer(_content, entryId) {
+  JsonViewerService.OpenJsonViewer(entryId)
 }
 
 export default {

@@ -17,6 +17,7 @@ import (
 	"jpaste/internal/fileop"
 	"jpaste/internal/history"
 	"jpaste/internal/hotkey"
+	"jpaste/internal/imageviewer"
 	"jpaste/internal/jsonviewer"
 	applog "jpaste/internal/log"
 	"jpaste/internal/notify"
@@ -118,10 +119,17 @@ func main() {
 	}))
 
 	// JSON viewer — opens a separate window for structured JSON viewing.
-	var createJsonWindowFn func(url string)
-	jsonViewerSvc := jsonviewer.NewService(func(url string) {
+	var createJsonWindowFn func(path, title string)
+
+	jsonViewerSvc := jsonviewer.NewService(func(path string) {
 		if createJsonWindowFn != nil {
-			createJsonWindowFn(url)
+			createJsonWindowFn(path, "JSON 查看")
+		}
+	})
+
+	imageViewerSvc := imageviewer.NewService(func(path string) {
+		if createJsonWindowFn != nil {
+			createJsonWindowFn(path, "图片查看")
 		}
 	})
 
@@ -164,6 +172,7 @@ func main() {
 			application.NewService(fileSvc),
 			application.NewService(syncSvc),
 			application.NewService(jsonViewerSvc),
+			application.NewService(imageViewerSvc),
 		},
 	})
 
@@ -173,19 +182,19 @@ func main() {
 		return app.Env.OpenFileManager(path, selectFile)
 	}
 
-	createJsonWindowFn = func(url string) {
-		applog.Info("jsonviewer: creating window", "url", url)
+	createJsonWindowFn = func(path, title string) {
+		applog.Info("secondary window", "title", title)
 		win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-			Title:            "JSON 查看",
+			Title:            title,
 			Width:            1200,
 			Height:           800,
 			MinWidth:         600,
 			MinHeight:        400,
-			URL:              url,
+			URL:              path,
 			BackgroundColour: application.NewRGB(248, 250, 252),
 		})
 		win.Show()
-		applog.Info("jsonviewer: window shown", "url", url)
+		applog.Info("secondary window shown", "title", title)
 	}
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{

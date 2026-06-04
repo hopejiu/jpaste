@@ -4,8 +4,10 @@ import { MemoryRouter } from 'react-router-dom'
 import App from './App'
 
 // MemoryRouter ignores the browser URL, so we must detect the intended
-// route from window.location (used by secondary windows like /json-view).
-const initialPath = window.location.pathname === '/json-view'
+// route from window.location (used by secondary windows like /json-view /image-view).
+const isSecondaryWindow = window.location.pathname === '/json-view'
+  || window.location.pathname === '/image-view'
+const initialPath = isSecondaryWindow
   ? window.location.pathname + window.location.search
   : '/'
 

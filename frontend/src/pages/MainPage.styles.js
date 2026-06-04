@@ -151,22 +151,6 @@ export const styles = {
   itemContentRow: {
     display: 'flex', gap: '8px', alignItems: 'flex-start',
   },
-  imgOverlay: {
-    position: 'fixed', inset: 0, zIndex: 3000,
-    background: 'rgba(0,0,0,0.85)', display: 'flex',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  imgClose: {
-    position: 'absolute', top: '16px', right: '16px',
-    background: 'transparent', border: 'none', color: '#fff',
-    cursor: 'pointer', zIndex: 1,
-  },
-  imgLoading: { color: '#fff', fontSize: 'var(--font-size-lg)' },
-  imgPreview: {
-    maxWidth: '90vw', maxHeight: '90vh', borderRadius: 'var(--radius-md)',
-    cursor: 'grab', userSelect: 'none',
-  },
-  imgPreviewDragging: { cursor: 'grabbing' },
   // Favorite star button.
   favBtn: {
     width: '28px', height: '28px', display: 'flex', alignItems: 'center',

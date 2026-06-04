@@ -53,6 +53,9 @@ type EntryStore interface {
 
 	// HasFileFormatByHash checks if an entry (by content_hash) has CF_HDROP formats.
 	HasFileFormatByHash(hash string) (bool, error)
+
+	// QueryImageEntryIDs returns all entry IDs that have image formats, filtered by tag/search.
+	QueryImageEntryIDs(tagMask int, search string) ([]int64, error)
 }
 
 // EntryRow is a single row from the clipboard_entry table.
@@ -310,6 +313,42 @@ func (s *sqliteStore) HasFileFormatByHash(hash string) (bool, error) {
 		hash,
 	).Scan(&count)
 	return count > 0, err
+}
+
+func (s *sqliteStore) QueryImageEntryIDs(tagMask int, search string) ([]int64, error) {
+	baseSQL := `SELECT e.id FROM clipboard_entry e
+		JOIN clipboard_format f ON f.entry_id = e.id AND f.format_type IN (8, 17)
+		WHERE 1=1`
+	var args []any
+
+	if tagMask&32 != 0 {
+		baseSQL += ` AND e.is_favorite = 1`
+		tagMask &^= 32
+	}
+	if tagMask != 0 {
+		baseSQL += ` AND e.tag_mask & ? != 0`
+		args = append(args, tagMask)
+	}
+	if search != "" {
+		baseSQL += ` AND e.id IN (SELECT DISTINCT entry_id FROM clipboard_format WHERE content LIKE ?)`
+		args = append(args, "%"+search+"%")
+	}
+
+	baseSQL += ` GROUP BY e.id ORDER BY e.updated_at DESC`
+	rows, err := s.db.Query(baseSQL, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 // rowsPathOrNil extracts file paths from a *sql.Rows if available.

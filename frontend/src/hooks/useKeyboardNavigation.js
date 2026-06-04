@@ -1,14 +1,8 @@
 import { useCallback } from 'react'
 import { Window } from '@wailsio/runtime'
 
-export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry, setSearch, setFocusedIdx, inputRef, modal, closeModal, imagePreview, closeImagePreview, activeTag, tags, onTagChange, search, listRef, deleteEntry, toggleFavorite, onOpenEditor }) {
+export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry, setSearch, setFocusedIdx, inputRef, modal, closeModal, activeTag, tags, onTagChange, search, listRef, deleteEntry, toggleFavorite, onOpenEditor }) {
   const handleKeyDown = useCallback((e) => {
-    // Image preview: Esc closes preview, nothing else passes through.
-    if (imagePreview) {
-      if (e.key === 'Escape') { e.preventDefault(); closeImagePreview() }
-      return
-    }
-
     // Modal handling: only Escape passes through.
     if (modal) {
       if (e.key === 'Escape') { e.preventDefault(); closeModal() }
@@ -52,11 +46,11 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
     }
 
     // Tab switching: Left/Right arrow keys.
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Tab') {
       e.preventDefault()
       const currentIdx = tags.findIndex(t => t.id === activeTag)
       if (currentIdx === -1) return
-      const delta = e.key === 'ArrowRight' ? 1 : -1
+      const delta = e.key === 'ArrowLeft' ? -1 : 1
       const nextIdx = (currentIdx + delta + tags.length) % tags.length
       onTagChange(tags[nextIdx].id)
       return
@@ -99,17 +93,6 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       return
     }
 
-    // Tab: toggle focus between search and list.
-    if (e.key === 'Tab') {
-      e.preventDefault()
-      if (document.activeElement === inputRef.current) {
-        setFocusedIdx(prev => prev >= 0 ? prev : 0)
-      } else {
-        setFocusedIdx(-1)
-        inputRef.current?.focus()
-      }
-      return
-    }
 
     // Home / End: scroll to top / bottom of entry list.
     if (e.key === 'Home') {
@@ -151,7 +134,7 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       inputRef.current?.focus()
     }
-  }, [entries, focusedIdx, useEntry, settings, setSearch, setFocusedIdx, inputRef, modal, closeModal, imagePreview, closeImagePreview, activeTag, tags, onTagChange, search, listRef, deleteEntry, toggleFavorite, onOpenEditor])
+  }, [entries, focusedIdx, useEntry, settings, setSearch, setFocusedIdx, inputRef, modal, closeModal, activeTag, tags, onTagChange, search, listRef, deleteEntry, toggleFavorite, onOpenEditor])
 
   return handleKeyDown
 }
