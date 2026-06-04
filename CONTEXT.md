@@ -17,8 +17,14 @@ Text-based formats (`CF_UNICODETEXT`, `CF_HTML`, `CF_RTF`, `CF_HDROP`) are store
 ### Clipboard Source
 The application that wrote the current clipboard content. Captured via `GetClipboardOwner()` → `GetWindowThreadProcessId()` → `OpenProcess()` + `QueryFullProcessImageName()` to record the full executable path, plus `GetWindowText()` for the window title at time of copy. NULL owner (clipboard cleared or cross-session) stores empty strings.
 
+### Paste Order
+A three-state setting (`settings.paste_order`: `"normal"` / `"stack"` / `"queue"`) that controls how Ctrl+V consumes recently captured clipboard items. When non-normal, a `WH_KEYBOARD_LL` global hook intercepts user Ctrl+V, pops an item from an in-memory `container/list`, writes it to the system clipboard, and lets the original Ctrl+V pass through. Only `CF_UNICODETEXT` (plain text) is supported. Switching between modes clears the list. jPaste's own clipboard writes and simulated paste are guarded by self-write hash and self-paste timestamp flags. Setting to `"normal"` stops the hook and clears the list.
+
 ### Clipboard Stack
-An optional FILO (LIFO) mode controlled by `stack_mode_enabled` in settings. When enabled, a `WH_KEYBOARD_LL` global hook intercepts user Ctrl+V, pops the most recently captured text from an in-memory stack, writes it to the system clipboard, and lets the original Ctrl+V pass through. Only `CF_UNICODETEXT` (plain text) is supported. jPaste's own clipboard writes (`UseEntry` paste, keyboard hook pop) and simulated paste (`keybd_event` in `clipboard.Paste()`) are guarded by self-write hash and self-paste timestamp flags to avoid re-pushing / re-popping. Disabling the mode stops the hook and clears the stack.
+A **Paste Order** sub-mode (`paste_order: "stack"`). Items are consumed from the back of the list — LIFO (Last In, First Out). Copy order `1,2,3,4,5` → paste order `5,4,3,2,1`.
+
+### Clipboard Queue
+A **Paste Order** sub-mode (`paste_order: "queue"`). Items are consumed from the front of the list — FIFO (First In, First Out). Copy order `1,2,3,4,5` → paste order `1,2,3,4,5`.
 
 ### Image Store
 An external file directory at `%APPDATA%/jPaste/images/{YYYY-MM-DD}/` for storing clipboard image payloads. Organized by date folders for easy cleanup — when expired entries are deleted, the corresponding date folders and image files are removed together. Images are excluded from WebDAV sync.

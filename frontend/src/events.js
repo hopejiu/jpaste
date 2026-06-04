@@ -15,6 +15,6 @@ export const EVENTS = {
 // Navigation
   NAVIGATE: 'navigate',
 
-  // Stack mode
-  STACK_MODE_CHANGED: 'stack-mode-changed',
+// Paste order (stack / queue / normal)
+  PASTE_ORDER_CHANGED: 'paste-order-changed',
 }

@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -188,7 +189,20 @@ func main() {
 	app := application.New(application.Options{
 		Name:        "jPaste",
 		Description: "A modern clipboard manager for Windows",
-		Assets:      application.AssetOptions{Handler: application.BundledAssetFileServer(assets)},
+		Assets: application.AssetOptions{
+			Handler: application.BundledAssetFileServer(assets),
+			Middleware: func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+					// SPA fallback: only rewrite known SPA routes to serve index.html.
+					// Avoid rewriting other extension-less paths (e.g. /wails/*, Vite internal paths).
+					switch req.URL.Path {
+					case "/image-view", "/json-view", "/settings":
+						req.URL.Path = "/"
+					}
+					next.ServeHTTP(rw, req)
+				})
+			},
+		},
 		Services: []application.Service{
 			application.NewService(watcher),
 			application.NewService(histSvc),
@@ -287,11 +301,11 @@ func main() {
 				applog.Info("cleaned up old entries", "count", n, "retain_days", new.RetainDays)
 			}
 		}
-		if old.StackModeEnabled != new.StackModeEnabled {
-			applog.Info("stack mode change", "enabled", new.StackModeEnabled)
-			filoStack.SetEnabled(new.StackModeEnabled)
+		if old.PasteOrder != new.PasteOrder {
+			applog.Info("paste order change", "order", new.PasteOrder)
+			filoStack.SetMode(new.PasteOrder)
 			if handle.app != nil {
-				handle.Emit(events.StackModeChanged, new.StackModeEnabled)
+				handle.Emit(events.PasteOrderChanged, new.PasteOrder)
 			}
 		}
 		if data, err := json.Marshal(new); err == nil {
@@ -303,10 +317,10 @@ func main() {
 	defer notify.Shutdown()
 	defer filoStack.ServiceShutdown()
 
-	// Activate stack mode if setting was persisted from a previous session.
-	if sett.GetSettings().StackModeEnabled {
-		applog.Info("initial stack mode enabled from saved settings")
-		filoStack.SetEnabled(true)
+	// Activate paste order if stored from a previous session.
+	if order := sett.GetSettings().PasteOrder; order != "normal" {
+		applog.Info("initial paste order from saved settings", "order", order)
+		filoStack.SetMode(order)
 	}
 
 	if err := app.Run(); err != nil {

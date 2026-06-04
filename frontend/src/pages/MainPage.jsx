@@ -12,7 +12,6 @@ import SearchBar from '../components/SearchBar'
 import TagTabs from '../components/TagTabs'
 import EntryList from '../components/EntryList'
 import ActionModal from '../components/ActionModal'
-import ToggleSwitch from '../components/ToggleSwitch'
 import { styles } from './MainPage.styles'
 
 export default function MainPage() {
@@ -23,7 +22,7 @@ export default function MainPage() {
     useEntry, deleteEntry, toggleFavorite,
   } = useClipboard()
 
-  const { settings, syncStatus, toggleStackMode } = useApp()
+  const { settings, syncStatus, setPasteOrder } = useApp()
 
   const [focusedIdx, setFocusedIdx] = useState(-1)
   const [modal, setModal] = useState(null)
@@ -217,13 +216,31 @@ export default function MainPage() {
       {/* Footer */}
       <div style={styles.footer}>
         <span style={styles.footerText}>Ctrl+L搜索 · Ctrl+E编辑 · Del删除 · Space收藏 · Esc隐藏</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-          <span style={{ fontSize: '11px', color: settings.stack_mode_enabled ? 'var(--color-primary)' : 'var(--color-muted)' }}>栈</span>
-          <ToggleSwitch
-            checked={!!settings.stack_mode_enabled}
-            onChange={toggleStackMode}
-            label="切换栈模式"
-          />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+          {['normal', 'stack', 'queue'].map(mode => {
+            const active = (settings.paste_order || 'normal') === mode
+            const label = mode === 'normal' ? '正常' : mode === 'stack' ? '栈' : '队列'
+            const title = mode === 'normal' ? '正常粘贴'
+              : mode === 'stack' ? '栈模式：Ctrl+V 倒序粘贴（后进先出）'
+              : '队列模式：Ctrl+V 顺序粘贴（先进先出）'
+            return (
+              <button
+                key={mode}
+                onClick={() => setPasteOrder(mode)}
+                title={title}
+                style={{
+                  fontSize: '11px', padding: '1px 6px', borderRadius: '4px',
+                  border: '1px solid var(--color-border)',
+                  background: active ? 'rgba(99,102,241,0.12)' : 'transparent',
+                  color: active ? 'var(--color-primary)' : 'var(--color-muted)',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  transition: 'all var(--transition-fast)',
+                }}
+              >
+                {label}
+              </button>
+            )
+          })}
         </div>
       </div>
 

@@ -13,10 +13,11 @@ import (
 )
 
 var (
-	mu       sync.Mutex
-	curFile  *os.File
-	curName  string
-	logDir   string
+	mu             sync.Mutex
+	curFile        *os.File
+	curName        string
+	logDir         string
+	terminalOutput bool // true in dev mode (build tag !production), false in production builds
 )
 
 // Init sets up slog + standard log to write to appdata/jPaste/jpaste-{date}-{hour}.log.
@@ -60,8 +61,13 @@ func switchLog() error {
 	curFile = f
 	curName = name
 
-	// MultiWriter: log to both file and stderr (terminal).
-	mw := io.MultiWriter(f, os.Stderr)
+	// MultiWriter: log always goes to file; stderr only in dev mode.
+	var writers []io.Writer
+	writers = append(writers, f)
+	if terminalOutput {
+		writers = append(writers, os.Stderr)
+	}
+	mw := io.MultiWriter(writers...)
 
 	log.SetOutput(mw)
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)

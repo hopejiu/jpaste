@@ -1,6 +1,7 @@
 package filostack
 
 import (
+	"container/list"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -12,13 +13,18 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// Service implements a FILO (LIFO) clipboard stack.
-// When the stack mode is enabled, each Ctrl+V pops the most recently
-// captured text item. Only CF_UNICODETEXT is supported.
+const (
+	ModeNormal = "normal"
+	ModeStack  = "stack"
+	ModeQueue  = "queue"
+)
+
+// Service implements a paste-order controller: normal / stack (FILO) / queue (FIFO).
+// Only CF_UNICODETEXT is supported.
 type Service struct {
-	mu      sync.Mutex
-	stack   []string
-	enabled bool
+	mu    sync.Mutex
+	items *list.List
+	mode  string
 
 	// hook management
 	hookStop func()
@@ -31,21 +37,16 @@ type Service struct {
 	selfWriteTime time.Time
 
 	// callbacks
-	onStateChange func(enabled bool)
-	onWriteText   func(text string) bool
+	onWriteText func(text string) bool
 }
 
 // NewService creates a Service.
 func NewService(onWriteText func(text string) bool) *Service {
 	return &Service{
 		onWriteText: onWriteText,
+		items:       list.New(),
+		mode:        ModeNormal,
 	}
-}
-
-// WithStateChange sets a callback when stack mode is toggled.
-func (s *Service) WithStateChange(fn func(enabled bool)) *Service {
-	s.onStateChange = fn
-	return s
 }
 
 // ServiceStartup implements wails Service.
@@ -61,107 +62,122 @@ func (s *Service) ServiceShutdown() error {
 	return nil
 }
 
-// Enabled returns whether the stack mode is active.
+// Mode returns the current paste order mode.
+func (s *Service) Mode() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.mode
+}
+
+// Enabled returns whether a non-normal mode is active.
 func (s *Service) Enabled() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.enabled
+	return s.mode != ModeNormal
 }
 
-// Push adds an item to the top of the stack.
+// Push adds an item to the back of the list.
 // It skips self-writes (content our own code just wrote to clipboard).
 func (s *Service) Push(text string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.enabled || text == "" {
-		log.Printf("[filostack] push: skipped (enabled=%v text empty=%v)", s.enabled, text == "")
+	if s.mode == ModeNormal || text == "" {
 		return
 	}
-	// Skip push for self-writes (content we ourselves just placed on clipboard).
+	// Skip push for self-writes.
 	if s.selfWriteHash != "" && time.Since(s.selfWriteTime) < 5*time.Second {
 		h := contentHash(text)
-		age := time.Since(s.selfWriteTime).Milliseconds()
 		if h == s.selfWriteHash {
-			log.Printf("[filostack] skip self-write push (hash=%s age=%dms)", h, age)
+			log.Printf("[filostack] skip self-write push (hash=%s)", h)
 			return
-		} else {
-			log.Printf("[filostack] not self-write (cur=%s last=%s age=%dms)", h, s.selfWriteHash, age)
 		}
-	} else if s.selfWriteHash == "" {
-		log.Printf("[filostack] no self-write marker, pushing")
-	} else {
-		log.Printf("[filostack] self-write expired (%dms ago)", time.Since(s.selfWriteTime).Milliseconds())
 	}
-	s.stack = append(s.stack, text)
-	log.Printf("[filostack] push: stack size=%d, text=%q", len(s.stack), previewText(text))
+	s.items.PushBack(text)
+	log.Printf("[filostack] push: size=%d, mode=%s, text=%q", s.items.Len(), s.mode, previewText(text))
 }
 
-// Pop removes and returns the top item. Returns false if empty.
+// Pop removes an item from the list. Direction depends on mode:
+//   - stack: removes from the back (LIFO)
+//   - queue: removes from the front (FIFO)
+//   - normal: always returns false
 func (s *Service) Pop() (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.stack) == 0 {
-		log.Println("[filostack] pop: stack EMPTY")
+	if s.items.Len() == 0 {
+		log.Printf("[filostack] pop: empty (mode=%s)", s.mode)
 		return "", false
 	}
-	val := s.stack[len(s.stack)-1]
-	s.stack = s.stack[:len(s.stack)-1]
-	log.Printf("[filostack] pop: stack size=%d, text=%q", len(s.stack), previewText(val))
+	var e *list.Element
+	var direction string
+	switch s.mode {
+	case ModeStack:
+		e = s.items.Back()
+		direction = "back (stack)"
+	case ModeQueue:
+		e = s.items.Front()
+		direction = "front (queue)"
+	default:
+		return "", false
+	}
+	val := e.Value.(string)
+	s.items.Remove(e)
+	log.Printf("[filostack] pop: size=%d, from=%s, text=%q", s.items.Len(), direction, previewText(val))
 	return val, true
 }
 
-// Clear empties the stack.
+// Clear empties the list.
 func (s *Service) Clear() {
 	s.mu.Lock()
-	s.stack = nil
+	s.items.Init()
 	s.selfWriteHash = ""
 	s.mu.Unlock()
 	log.Println("[filostack] cleared")
 }
 
-// Len returns the stack size.
+// Len returns the number of items.
 func (s *Service) Len() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.stack)
+	return s.items.Len()
 }
 
-// SetEnabled enables or disables the stack mode.
-// When enabling, starts the keyboard hook; when disabling, stops it and clears the stack.
-func (s *Service) SetEnabled(enabled bool) {
+// SetMode changes the paste order mode.
+// Switching to normal stops the hook; switching between stack/queue clears the list.
+func (s *Service) SetMode(mode string) {
 	s.mu.Lock()
-	if enabled == s.enabled {
+	if mode == s.mode {
 		s.mu.Unlock()
 		return
 	}
-	s.enabled = enabled
+	oldMode := s.mode
+	s.mode = mode
 	s.mu.Unlock()
 
-	if enabled {
-		s.startHook()
-		log.Println("[filostack] enabled")
-	} else {
+	log.Printf("[filostack] SetMode: %s → %s", oldMode, mode)
+
+	if mode == ModeNormal {
 		s.stopHook()
 		s.Clear()
-		log.Println("[filostack] disabled (stack cleared)")
-	}
-	if s.onStateChange != nil {
-		s.onStateChange(enabled)
+	} else {
+		// Clear list when switching from any mode to a different non-normal mode.
+		s.Clear()
+		// Start hook if not already running (first time or after normal).
+		// No need to restart if already running from a previous non-normal mode.
+		// But we stopped + cleared, so we need to start.
+		s.startHook()
 	}
 }
 
-// MarkSelfWrite records jPaste's own clipboard write, so subsequent
-// WM_CLIPBOARDUPDATE will be ignored by Push().
+// MarkSelfWrite records jPaste's own clipboard write.
 func (s *Service) MarkSelfWrite(text string) {
 	s.mu.Lock()
 	s.selfWriteHash = contentHash(text)
 	s.selfWriteTime = time.Now()
 	s.mu.Unlock()
-	log.Printf("[filostack] MarkSelfWrite: hash=%q", s.selfWriteHash)
+	log.Printf("[filostack] MarkSelfWrite: hash=%s", s.selfWriteHash)
 }
 
-// SetSelfPaste marks that jPaste is about to simulate a Ctrl+V (keybd_event),
-// so the keyboard hook should not intercept it.
+// SetSelfPaste marks that jPaste is about to simulate a Ctrl+V (keybd_event).
 func (s *Service) SetSelfPaste() {
 	s.mu.Lock()
 	s.selfPasteUntil = time.Now().Add(500 * time.Millisecond)
@@ -206,18 +222,18 @@ func (s *Service) handleHookKey() {
 	s.mu.Unlock()
 
 	if isSelfPaste {
-		log.Printf("[filostack] hook: self-paste guard active (%dms remaining), skipping", remaining)
+		log.Printf("[filostack] hook: self-paste guard active (%dms), skipping", remaining)
 		return
 	}
 	text, ok := s.Pop()
 	if !ok {
-		log.Println("[filostack] hook: stack empty, letting Ctrl+V pass through")
+		log.Println("[filostack] hook: no item, letting Ctrl+V pass through")
 		return
 	}
-	log.Printf("[filostack] hook: writing popped text=%q, calling clipboard.WriteText", previewText(text))
+	log.Printf("[filostack] hook: writing text=%q", previewText(text))
 	s.MarkSelfWrite(text)
 	ok = s.onWriteText(text)
-	log.Printf("[filostack] hook: clipboard.WriteText returned %v", ok)
+	log.Printf("[filostack] hook: WriteText returned %v", ok)
 }
 
 // --- helpers ---
@@ -235,5 +251,4 @@ func previewText(s string) string {
 }
 
 // platformStartHook starts the platform-specific keyboard hook.
-// Returns nil on unsupported platforms.
 var platformStartHook func(onVKeyDown func()) func()

@@ -25,7 +25,7 @@ const (
 	Navigate = "navigate"
 )
 
-// Stack mode
+// Paste order (stack / queue / normal)
 const (
-	StackModeChanged = "stack-mode-changed"
+	PasteOrderChanged = "paste-order-changed"
 )

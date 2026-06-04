@@ -14,7 +14,7 @@ const DEFAULT_SETTINGS = {
   auto_start: false,
   start_minimized: false,
   notify_enabled: false,
-  stack_mode_enabled: false,
+  paste_order: 'normal',
   action_config: {},
 }
 
@@ -75,16 +75,15 @@ export function AppProvider({ children }) {
     }
   }, [])
 
-  // Toggle stack mode — shortcut that wraps saveSettings.
-  const toggleStackMode = useCallback(async () => {
-    const next = !settings.stack_mode_enabled
-    await saveSettings({ ...settings, stack_mode_enabled: next })
+  // Set paste order — wraps saveSettings.
+  const setPasteOrder = useCallback(async (order) => {
+    await saveSettings({ ...settings, paste_order: order })
   }, [settings, saveSettings])
 
-  // Listen for stack mode state changes from Go.
+  // Listen for paste order changes from Go.
   useEffect(() => {
-    const unsub = Events.On(EVENTS.STACK_MODE_CHANGED, (evt) => {
-      setSettings(prev => ({ ...prev, stack_mode_enabled: !!evt.data }))
+    const unsub = Events.On(EVENTS.PASTE_ORDER_CHANGED, (evt) => {
+      setSettings(prev => ({ ...prev, paste_order: evt.data || 'normal' }))
     })
     return unsub
   }, [])
@@ -94,7 +93,7 @@ export function AppProvider({ children }) {
       settings, saveSettings,
       syncStatus,
       wdConfig, refreshWdConfig,
-      toggleStackMode,
+      setPasteOrder,
     }}>
       {children}
     </AppContext.Provider>
