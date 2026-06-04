@@ -129,6 +129,11 @@ export default function MainPage() {
   }, [])
 
   const handleActionClick = useCallback((actionId, entry) => {
+    const action = getById(actionId)
+    if (action?.handler) {
+      action.handler(entry.content)
+      return
+    }
     setModal({ actionId, entry })
   }, [])
 
@@ -218,9 +223,8 @@ export default function MainPage() {
         open={!!modal}
         onClose={closeModal}
         title={modalAction?.label || ''}
-        wide={modal?.actionId === 'json'}
       >
-        {modalAction && (
+        {modalAction?.Component && (
           <modalAction.Component
             content={modal.entry.content}
             entryId={modal.entry.id}

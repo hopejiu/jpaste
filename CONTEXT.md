@@ -53,6 +53,9 @@ A system-wide keyboard shortcut that shows/hides the jPaste window. Default: `Al
 ### Retained Duration
 How long clipboard entries are kept before automatic cleanup. Default: 30 days. Cleanup runs on app startup and periodically.
 
+### JSON Viewer Window
+A separate Wails window opened for structured JSON viewing and editing. When a clipboard entry is detected as valid JSON and the user clicks "查看 JSON", the `jsonviewer.Service` on the Go side stores the JSON content against a random 16-character hex token, then creates a new window at `/json-view?token=<token>`. The front-end `JsonViewPage` retrieves the content via `GetJsonViewerData(token)` (cached for 60s TTL to survive React StrictMode remounts) and renders it with the [jsoneditor](https://github.com/josdejong/jsoneditor) component in `tree` mode with optional `code` (Ace editor) mode toggle. The editor supports full CRUD operations, undo/redo, search, sort, drag-and-drop, and JSON formatting. The JSON viewer window is independent — it can stay open while the user continues using the main window.
+
 ### Toast
 A native Windows notification shown in the bottom-right corner when new clipboard content is captured. Duration: 3 seconds.
 
@@ -79,35 +82,38 @@ Bidirectional merge of clipboard entries and settings across machines via WebDAV
 ## Architecture
 
 ```
-┌──────────────────────────────────┐
-│  React Frontend (WebView)         │
-│  ┌────────────┐ ┌──────────────┐ │
-│  │  MainPage   │ │ SettingsPage │ │
-│  └────────────┘ └──────────────┘ │
-│         ↕ Wails Bindings         │
-├──────────────────────────────────┤
-│  Go Backend                       │
-│  ┌──────────┐ ┌───────────────┐  │
-│  │Clipboard │ │ HistoryService│  │
-│  │ Service  │ │               │  │
-│  │(lxn/win) │ └───────────────┘  │
-│  └──────────┘ ┌───────────────┐  │
-│               │ ImageStore    │  │
-│  ┌──────────┐ └───────────────┘  │
-│  │Settings  │ ┌───────────────┐  │
-│  │ Service  │ │ FileService   │  │
-│  └──────────┘ └───────────────┘  │
-│  ┌──────────┐                    │
-│  │  Sync    │                    │
-│  │ Service  │                    │
-│  └──────────┘                    │
-│  ┌──────────────────────────────┐ │
-│  │ SQLite + settings + webdav   │ │
-│  └──────────────────────────────┘ │
-│  ┌──────────────────────────────┐ │
-│  │ System Tray + Global Hotkey  │ │
-│  └──────────────────────────────┘ │
-└──────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  React Frontend (WebView)                              │
+│  ┌────────────┐ ┌──────────────┐ ┌──────────────────┐ │
+│  │  MainPage   │ │ SettingsPage │ │ JsonViewPage (*) │ │
+│  └────────────┘ └──────────────┘ └──────────────────┘ │
+│         ↕ Wails Bindings         ↕ (separate window)  │
+├──────────────────────────────────────────────────────┤
+│  Go Backend                                            │
+│  ┌──────────┐ ┌───────────────┐  ┌─────────────────┐  │
+│  │Clipboard │ │ HistoryService│  │  JsonViewerSvc  │  │
+│  │ Service  │ │               │  │ (token store +  │  │
+│  │(lxn/win) │ └───────────────┘  │  window create) │  │
+│  └──────────┘ ┌───────────────┐  └─────────────────┘  │
+│               │ ImageStore    │                       │
+│  ┌──────────┐ └───────────────┘                       │
+│  │Settings  │ ┌───────────────┐                       │
+│  │ Service  │ │ FileService   │                       │
+│  └──────────┘ └───────────────┘                       │
+│  ┌──────────┐                                         │
+│  │  Sync    │                                         │
+│  │ Service  │                                         │
+│  └──────────┘                                         │
+│  ┌───────────────────────────────────────────────┐    │
+│  │ SQLite + settings + webdav                    │    │
+│  └───────────────────────────────────────────────┘    │
+│  ┌───────────────────────────────────────────────┐    │
+│  │ System Tray + Global Hotkey                   │    │
+│  └───────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────┘
+
+(*) JsonViewPage runs in a separate Wails window (title: "JSON 查看"),
+    created on demand by jsonviewer.Service.
 ```
 
 ## Storage
@@ -119,11 +125,13 @@ Bidirectional merge of clipboard entries and settings across machines via WebDAV
 - **User settings:** `%APPDATA%/jPaste/settings.json`
 
 ### Action Module
-A self-contained frontend module that recognizes clipboard content and offers a contextual operation. Each module is a file in `frontend/src/actions/`. Exports: `{ id, label, icon, priority, detect(content): boolean, Component }`. Modules are registered statically in `actions/index.js`.
+A self-contained frontend module that recognizes clipboard content and offers a contextual operation. Each module is a file in `frontend/src/actions/`. Exports: `{ id, label, icon, priority, detect(content): boolean, handler?(content): void, Component? }`. Modules are registered statically in `actions/index.js`.
 
 **Detection** is lazy and viewport-scoped: only entries that scroll into view are tested via a shared `IntersectionObserver` (rootMargin 120px). Results are cached by entry ID for the lifetime of the entry list.
 
 **Up to 3** highest-priority matched actions are shown as inline buttons next to Copy/Paste on each list item. Buttons show the module's lucide-react icon + label tooltip.
+
+**Dispatch**: If the module exports a `handler` function, it is called directly when the user clicks the action button — no modal is opened. This is used for actions that open external windows (e.g., JSON viewer). Otherwise, if only a `Component` is exported, the `ActionModal` overlay renders the component.
 
 **Action Config** lives in `settings.json` under `action_config`: `{ "moduleId": { "enabled": true, "priority": number } }`. Go passes it through as `json.RawMessage` — opaque to the backend. The Settings page provides per-module enable/disable toggles and priority adjustment via up/down buttons.
 
@@ -135,7 +143,7 @@ The six built-in action modules:
 | Module    | Detection Rule                     | Behavior              | Implementation |
 |-----------|------------------------------------|-----------------------|----------------|
 | math      | Only digits/ops/parens, >=1 operator | Editable expression → eval in modal | Pure JS (`new Function`) |
-| json      | Starts with `{` or `[`, valid JSON | Collapsible tree viewer | Custom React component |
+| json      | Starts with `{` or `[`, valid JSON | Opens separate window with full JSON editor (jsoneditor) in `tree` + `code` modes | Go: `jsonviewer.Service.OpenJsonViewer()` creates a new Wails window at `/json-view?token=xxx`, front-end retrieves data via `GetJsonViewerData(token)` |
 | url       | Starts with `http://` or `https://` | Open in default browser | `Browser.OpenURL()` from `@wailsio/runtime` |
 | folder    | Starts with `X:\` or `\\` (Windows) | Open in Explorer | Go: `app.Env.OpenFileManager()` via `fileop.Service.OpenInExplorer()` |
 | base64    | Base64 charset, length>4, mod4=0   | Editable decode in modal | `atob()` |

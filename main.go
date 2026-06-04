@@ -17,6 +17,7 @@ import (
 	"jpaste/internal/fileop"
 	"jpaste/internal/history"
 	"jpaste/internal/hotkey"
+	"jpaste/internal/jsonviewer"
 	applog "jpaste/internal/log"
 	"jpaste/internal/notify"
 	"jpaste/internal/settings"
@@ -123,6 +124,14 @@ func main() {
 		return openFileManagerFn(path, selectFile)
 	}))
 
+	// JSON viewer — opens a separate window for structured JSON viewing.
+	var createJsonWindowFn func(url string)
+	jsonViewerSvc := jsonviewer.NewService(func(url string) {
+		if createJsonWindowFn != nil {
+			createJsonWindowFn(url)
+		}
+	})
+
 	// Pull remote settings on startup.
 	if remoteSettings, err := syncSvc.PullSettings(); err == nil && remoteSettings != nil {
 		var remote settings.Data
@@ -161,6 +170,7 @@ func main() {
 			application.NewService(sett),
 			application.NewService(fileSvc),
 			application.NewService(syncSvc),
+			application.NewService(jsonViewerSvc),
 		},
 	})
 
@@ -168,6 +178,21 @@ func main() {
 
 	openFileManagerFn = func(path string, selectFile bool) error {
 		return app.Env.OpenFileManager(path, selectFile)
+	}
+
+	createJsonWindowFn = func(url string) {
+		applog.Info("jsonviewer: creating window", "url", url)
+		win := app.Window.NewWithOptions(application.WebviewWindowOptions{
+			Title:            "JSON 查看",
+			Width:            1200,
+			Height:           800,
+			MinWidth:         600,
+			MinHeight:        400,
+			URL:              url,
+			BackgroundColour: application.NewRGB(248, 250, 252),
+		})
+		win.Show()
+		applog.Info("jsonviewer: window shown", "url", url)
 	}
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
