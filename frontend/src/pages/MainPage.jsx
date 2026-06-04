@@ -42,8 +42,15 @@ export default function MainPage() {
 
   const { detectedMap, observeItem } = useActionDetection(entries, settings.action_config, listRef)
 
+  // Define handleTagChange before handleKeyDown (referenced by it).
+  const handleTagChange = useCallback((tag) => {
+    setActiveTag(tag)
+    setFocusedIdx(-1)
+  }, [setActiveTag])
+
   const handleKeyDown = useKeyboardNavigation({
     entries, focusedIdx, settings, useEntry, setSearch, setFocusedIdx, inputRef, modal, closeModal,
+    activeTag, tags: TAGS, onTagChange: handleTagChange, search, listRef,
   })
 
   // Auto-focus search + scroll to top on mount.
@@ -104,11 +111,6 @@ export default function MainPage() {
     setSearch(term)
     setFocusedIdx(-1)
   }, [setSearch])
-
-  const handleTagChange = useCallback((tag) => {
-    setActiveTag(tag)
-    setFocusedIdx(-1)
-  }, [setActiveTag])
 
   const handleSelect = useCallback((entry) => {
     setAnimatingId(entry.id)
@@ -208,7 +210,7 @@ export default function MainPage() {
 
       {/* Footer */}
       <div style={styles.footer}>
-        <span style={styles.footerText}>Alt+V 切换 · Ctrl+1-9 选择 · 右键更多操作</span>
+        <span style={styles.footerText}>Alt+V 切换 · Ctrl+1-9 选择 · ← → 标签 · Page↑↓ 翻页 · Esc 隐藏 · 右键更多操作</span>
       </div>
 
       {/* Action Modal */}
