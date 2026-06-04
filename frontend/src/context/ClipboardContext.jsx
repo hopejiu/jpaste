@@ -22,6 +22,19 @@ export const TAGS = [
   { id: TAG_FAVORITE, label: '收藏' },
 ]
 
+// Sort options.
+export const SORT_OPTIONS = [
+  { field: 'updated_at', order: 'desc', label: '更新时间 ↓' },
+  { field: 'updated_at', order: 'asc', label: '更新时间 ↑' },
+  { field: 'content_length', order: 'desc', label: '长度 ↓' },
+  { field: 'content_length', order: 'asc', label: '长度 ↑' },
+]
+
+function getSortLabel(field, order) {
+  const opt = SORT_OPTIONS.find(o => o.field === field && o.order === order)
+  return opt ? opt.label : '更新时间 ↓'
+}
+
 // --- Reducer ---
 
 const initialState = {
@@ -32,6 +45,8 @@ const initialState = {
   loading: true,
   isRegex: false,
   cursor: { updatedAt: '', id: 0 },
+  sortField: 'updated_at',
+  sortOrder: 'desc',
 }
 
 function clipboardReducer(state, action) {
@@ -42,6 +57,8 @@ function clipboardReducer(state, action) {
       return { ...state, activeTag: action.payload, focusedIdx: -1 }
     case 'SET_REGEX':
       return { ...state, isRegex: action.payload }
+    case 'SET_SORT':
+      return { ...state, sortField: action.payload.field, sortOrder: action.payload.order }
     case 'LOAD_START':
       return { ...state, loading: true }
     case 'LOAD_FIRST_PAGE':
@@ -89,33 +106,42 @@ function clipboardReducer(state, action) {
 
 // --- Provider ---
 
-export function ClipboardProvider({ children }) {
-  const [state, dispatch] = useReducer(clipboardReducer, initialState)
+export function ClipboardProvider({ children, initialSortField, initialSortOrder, onSortChange }) {
+  const [state, dispatch] = useReducer(clipboardReducer, {
+    ...initialState,
+    sortField: initialSortField || 'updated_at',
+    sortOrder: initialSortOrder || 'desc',
+  })
 
   // Refs for latest state consumed by async callbacks / event listeners.
   const stateRef = useRef(state)
   stateRef.current = state
   const debounceRef = useRef(null)
+  const onSortChangeRef = useRef(onSortChange)
+  onSortChangeRef.current = onSortChange
 
-  // Build cursor from last entry.
-  const cursorFromList = (list) => {
+  // Build cursor from last entry based on current sort.
+  const cursorFromList = (list, sortField, sortOrder) => {
     if (list && list.length > 0) {
       const last = list[list.length - 1]
-      return { updatedAt: last.updated_at, id: last.id }
+      const cursor1 = sortField === 'content_length'
+        ? String(last.content_length ?? 0)
+        : last.updated_at
+      return { updatedAt: cursor1, id: last.id }
     }
     return { updatedAt: '', id: 0 }
   }
 
   // refreshHistory: first page (resets cursor).
-  const refreshHistory = useCallback(async (searchTerm = '', tagMask = TAG_ALL) => {
+  const refreshHistory = useCallback(async (searchTerm = '', tagMask = TAG_ALL, sortField, sortOrder) => {
     dispatch({ type: 'LOAD_START' })
     try {
-      const result = await HistoryService.GetHistory(searchTerm, tagMask, '', 0)
+      const result = await HistoryService.GetHistory(searchTerm, tagMask, '', 0, sortField, sortOrder)
       if (Array.isArray(result)) {
         const [list, more] = result
         dispatch({
           type: 'LOAD_FIRST_PAGE',
-          payload: { list: list || [], hasMore: !!more, cursor: cursorFromList(list) },
+          payload: { list: list || [], hasMore: !!more, cursor: cursorFromList(list, sortField, sortOrder) },
         })
       } else {
         dispatch({ type: 'LOAD_FIRST_PAGE', payload: { list: [], hasMore: false, cursor: { updatedAt: '', id: 0 } } })
@@ -133,13 +159,13 @@ export function ClipboardProvider({ children }) {
     dispatch({ type: 'LOAD_START' })
     const { updatedAt, id } = s.cursor
     try {
-      const result = await HistoryService.GetHistory(s.search, s.activeTag, updatedAt, id)
+      const result = await HistoryService.GetHistory(s.search, s.activeTag, updatedAt, id, s.sortField, s.sortOrder)
       if (Array.isArray(result)) {
         const [list, more] = result
         if (list && list.length > 0) {
           dispatch({
             type: 'LOAD_MORE',
-            payload: { list, hasMore: !!more, cursor: cursorFromList(list) },
+            payload: { list, hasMore: !!more, cursor: cursorFromList(list, s.sortField, s.sortOrder) },
           })
         } else {
           dispatch({ type: 'LOAD_ERROR' })
@@ -152,10 +178,10 @@ export function ClipboardProvider({ children }) {
   }, [])
 
   // regexSearch: server-side regex, loads all matching entries at once.
-  const regexSearch = useCallback(async (pattern, tagMask) => {
+  const regexSearch = useCallback(async (pattern, tagMask, sortField, sortOrder) => {
     dispatch({ type: 'LOAD_START' })
     try {
-      const list = await HistoryService.GetHistoryRegex(pattern, tagMask)
+      const list = await HistoryService.GetHistoryRegex(pattern, tagMask, sortField, sortOrder)
       dispatch({ type: 'LOAD_REGEX', payload: list || [] })
     } catch (err) {
       console.error('Failed to regex search:', err)
@@ -165,7 +191,8 @@ export function ClipboardProvider({ children }) {
 
   // Refresh on mount.
   useEffect(() => {
-    refreshHistory('', TAG_ALL)
+    const s = stateRef.current
+    refreshHistory('', TAG_ALL, s.sortField, s.sortOrder)
   }, [refreshHistory])
 
   // When search or tag changes, reset and reload.
@@ -175,9 +202,9 @@ export function ClipboardProvider({ children }) {
     const s = stateRef.current
     debounceRef.current = setTimeout(() => {
       if (s.isRegex && term) {
-        regexSearch(term, s.activeTag)
+        regexSearch(term, s.activeTag, s.sortField, s.sortOrder)
       } else {
-        refreshHistory(term, s.activeTag)
+        refreshHistory(term, s.activeTag, s.sortField, s.sortOrder)
       }
     }, 300)
   }, [refreshHistory, regexSearch])
@@ -186,9 +213,9 @@ export function ClipboardProvider({ children }) {
     dispatch({ type: 'SET_TAG', payload: tag })
     const s = stateRef.current
     if (s.isRegex && s.search) {
-      regexSearch(s.search, tag)
+      regexSearch(s.search, tag, s.sortField, s.sortOrder)
     } else {
-      refreshHistory(s.search, tag)
+      refreshHistory(s.search, tag, s.sortField, s.sortOrder)
     }
   }, [refreshHistory, regexSearch])
 
@@ -197,10 +224,24 @@ export function ClipboardProvider({ children }) {
     dispatch({ type: 'SET_REGEX', payload: enabled })
     const s = stateRef.current
     if (enabled && s.search) {
-      regexSearch(s.search, s.activeTag)
+      regexSearch(s.search, s.activeTag, s.sortField, s.sortOrder)
     } else if (!enabled) {
-      refreshHistory(s.search, s.activeTag)
+      refreshHistory(s.search, s.activeTag, s.sortField, s.sortOrder)
     }
+  }, [refreshHistory, regexSearch])
+
+  // Change sort and reload.
+  const handleSetSort = useCallback((field, order) => {
+    dispatch({ type: 'SET_SORT', payload: { field, order } })
+    const s = stateRef.current
+    // Reload from first page with new sort.
+    if (s.isRegex && s.search) {
+      regexSearch(s.search, s.activeTag, field, order)
+    } else {
+      refreshHistory(s.search, s.activeTag, field, order)
+    }
+    // Persist sort preference.
+    onSortChangeRef.current?.(field, order)
   }, [refreshHistory, regexSearch])
 
   // Listen for clipboard updates from Go.
@@ -208,9 +249,9 @@ export function ClipboardProvider({ children }) {
     const unsub = Events.On(EVENTS.CLIPBOARD_UPDATED, () => {
       const s = stateRef.current
       if (s.isRegex && s.search) {
-        regexSearch(s.search, s.activeTag)
+        regexSearch(s.search, s.activeTag, s.sortField, s.sortOrder)
       } else {
-        refreshHistory(s.search, s.activeTag)
+        refreshHistory(s.search, s.activeTag, s.sortField, s.sortOrder)
       }
     })
     return unsub
@@ -220,7 +261,7 @@ export function ClipboardProvider({ children }) {
     try {
       await HistoryService.UseEntry(id, action)
       const s = stateRef.current
-      refreshHistory(s.search, s.activeTag)
+      refreshHistory(s.search, s.activeTag, s.sortField, s.sortOrder)
     } catch (err) {
       console.error('Failed to use entry:', err)
     }
@@ -235,18 +276,14 @@ export function ClipboardProvider({ children }) {
       console.error('Failed to delete entry:', err)
       // Reload on failure to recover.
       const s = stateRef.current
-      refreshHistory(s.search, s.activeTag)
+      refreshHistory(s.search, s.activeTag, s.sortField, s.sortOrder)
     }
   }, [refreshHistory])
 
-  const clearAll = useCallback(async () => {
-    try {
-      await HistoryService.ClearAll()
-      const s = stateRef.current
-      refreshHistory(s.search, s.activeTag)
-    } catch (err) {
-      console.error('Failed to clear all:', err)
-    }
+  const clearAll = useCallback(async (keepFavorites) => {
+    await HistoryService.ClearAll(keepFavorites)
+    const s = stateRef.current
+    refreshHistory(s.search, s.activeTag, s.sortField, s.sortOrder)
   }, [refreshHistory])
 
   const toggleFavorite = useCallback(async (id, value) => {
@@ -271,6 +308,10 @@ export function ClipboardProvider({ children }) {
       loading: state.loading,
       isRegex: state.isRegex,
       toggleRegex: handleToggleRegex,
+      sortField: state.sortField,
+      sortOrder: state.sortOrder,
+      setSort: handleSetSort,
+      sortLabel: getSortLabel(state.sortField, state.sortOrder),
       loadMore,
       refreshHistory, useEntry, deleteEntry, clearAll, toggleFavorite,
     }}>

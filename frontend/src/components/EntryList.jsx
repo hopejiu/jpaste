@@ -48,9 +48,9 @@ export default function EntryList({
     onOpenEditor(id)
   }
 
-  const handleDelete = (entry) => {
+  const handleDelete = (entryId) => {
     hideCtxMenu()
-    onDelete(entry)
+    onDelete(entryId)
   }
 
   return (
@@ -97,7 +97,7 @@ export default function EntryList({
               <span>在编辑器中打开</span>
             </div>
           )}
-          <div style={styles.ctxItemDanger} onClick={() => handleDelete(ctxMenu.entry)}>
+          <div style={styles.ctxItemDanger} onClick={() => handleDelete(ctxMenu.entry.id)}>
             <Trash2 size={14} />
             <span>删除</span>
           </div>

@@ -11,18 +11,18 @@ import (
 // EntryStore abstracts the persistence layer for clipboard entries.
 // The production adapter is sqliteStore; tests use an in-memory fake.
 type EntryStore interface {
-	// QueryHistory returns a page of entry rows sorted by updated_at DESC, id DESC.
+	// QueryHistory returns a page of entry rows sorted by the given field and order.
 	// Returns pageSize+1 rows to enable hasMore detection.
-	QueryHistory(search string, tagMask int, afterUpdatedAt string, afterID int64, limit int) ([]EntryRow, error)
+	QueryHistory(search string, tagMask int, afterCursor1 string, afterID int64, limit int, sortField string, sortOrder string) ([]EntryRow, error)
 
 	// LoadFormats returns all formats for the given entry IDs, keyed by entry ID.
 	LoadFormats(ids []int64) (map[int64][]clipboard.FormatEntry, error)
 
 	// UpsertDedup tries to dedup an existing entry by hash. Returns true if deduped.
-	UpsertDedup(hash, sourceEXE, sourceTitle string, tagMask int, now string) (deduped bool, err error)
+	UpsertDedup(hash, sourceEXE, sourceTitle string, tagMask int, now string, contentLength int) (deduped bool, err error)
 
 	// InsertEntry inserts a new entry, returning the auto-generated ID.
-	InsertEntry(hash, sourceEXE, sourceTitle string, tagMask int, now string) (id int64, err error)
+	InsertEntry(hash, sourceEXE, sourceTitle string, tagMask int, now string, contentLength int) (id int64, err error)
 
 	// InsertFormat inserts a format row for an entry.
 	InsertFormat(entryID int64, formatType uint32, content, filePath, formatHash string) error
@@ -48,8 +48,8 @@ type EntryStore interface {
 	// Cleanup removes expired entries, returning count and associated image paths.
 	Cleanup(retainDays int) (deleted int64, imagePaths []string, err error)
 
-	// ClearAll removes all entries, returning associated image paths.
-	ClearAll() (imagePaths []string, err error)
+	// ClearAll removes all entries (or non-favorites if keepFavorites is true), returning associated image paths.
+	ClearAll(keepFavorites bool) (imagePaths []string, err error)
 
 	// HasFileFormatByHash checks if an entry (by content_hash) has CF_HDROP formats.
 	HasFileFormatByHash(hash string) (bool, error)
@@ -60,13 +60,14 @@ type EntryStore interface {
 
 // EntryRow is a single row from the clipboard_entry table.
 type EntryRow struct {
-	ID          int64
-	ContentHash string
-	SourceEXE   string
-	SourceTitle string
-	IsFavorite  bool
-	CreatedAt   string
-	UpdatedAt   string
+	ID            int64
+	ContentHash   string
+	SourceEXE     string
+	SourceTitle   string
+	IsFavorite    bool
+	CreatedAt     string
+	UpdatedAt     string
+	ContentLength int
 }
 
 // sqliteStore implements EntryStore backed by SQLite.
@@ -79,8 +80,8 @@ func NewSQLiteStore(db *sql.DB) EntryStore {
 	return &sqliteStore{db: db}
 }
 
-func (s *sqliteStore) QueryHistory(search string, tagMask int, afterUpdatedAt string, afterID int64, limit int) ([]EntryRow, error) {
-	baseSQL := `SELECT e.id, e.content_hash, e.source_exe, e.source_title, e.is_favorite, e.created_at, e.updated_at FROM clipboard_entry e`
+func (s *sqliteStore) QueryHistory(search string, tagMask int, afterCursor1 string, afterID int64, limit int, sortField string, sortOrder string) ([]EntryRow, error) {
+	baseSQL := `SELECT e.id, e.content_hash, e.source_exe, e.source_title, e.is_favorite, e.created_at, e.updated_at, e.content_length FROM clipboard_entry e`
 
 	var conditions []string
 	var args []any
@@ -97,9 +98,13 @@ func (s *sqliteStore) QueryHistory(search string, tagMask int, afterUpdatedAt st
 		conditions = append(conditions, `e.id IN (SELECT DISTINCT entry_id FROM clipboard_format WHERE content LIKE ?)`)
 		args = append(args, "%"+search+"%")
 	}
-	if afterUpdatedAt != "" {
-		conditions = append(conditions, `(e.updated_at < ? OR (e.updated_at = ? AND e.id < ?))`)
-		args = append(args, afterUpdatedAt, afterUpdatedAt, afterID)
+	if afterCursor1 != "" {
+		if sortOrder == "DESC" {
+			conditions = append(conditions, fmt.Sprintf("(e.%s < ? OR (e.%s = ? AND e.id < ?))", sortField, sortField))
+		} else {
+			conditions = append(conditions, fmt.Sprintf("(e.%s > ? OR (e.%s = ? AND e.id > ?))", sortField, sortField))
+		}
+		args = append(args, afterCursor1, afterCursor1, afterID)
 	}
 
 	where := ""
@@ -110,7 +115,7 @@ func (s *sqliteStore) QueryHistory(search string, tagMask int, afterUpdatedAt st
 		}
 	}
 
-	query := baseSQL + where + ` ORDER BY e.updated_at DESC, e.id DESC LIMIT ?`
+	query := baseSQL + where + fmt.Sprintf(" ORDER BY e.%s %s, e.id %s LIMIT ?", sortField, sortOrder, sortOrder)
 	args = append(args, limit)
 
 	rows, err := s.db.Query(query, args...)
@@ -122,7 +127,7 @@ func (s *sqliteStore) QueryHistory(search string, tagMask int, afterUpdatedAt st
 	var result []EntryRow
 	for rows.Next() {
 		var r EntryRow
-		if err := rows.Scan(&r.ID, &r.ContentHash, &r.SourceEXE, &r.SourceTitle, &r.IsFavorite, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.ContentHash, &r.SourceEXE, &r.SourceTitle, &r.IsFavorite, &r.CreatedAt, &r.UpdatedAt, &r.ContentLength); err != nil {
 			return nil, fmt.Errorf("scan entry: %w", err)
 		}
 		result = append(result, r)
@@ -164,10 +169,10 @@ func (s *sqliteStore) LoadFormats(ids []int64) (map[int64][]clipboard.FormatEntr
 	return m, nil
 }
 
-func (s *sqliteStore) UpsertDedup(hash, sourceEXE, sourceTitle string, tagMask int, now string) (bool, error) {
+func (s *sqliteStore) UpsertDedup(hash, sourceEXE, sourceTitle string, tagMask int, now string, contentLength int) (bool, error) {
 	result, err := s.db.Exec(
-		`UPDATE clipboard_entry SET updated_at = ?, source_exe = ?, source_title = ?, tag_mask = ? WHERE content_hash = ?`,
-		now, sourceEXE, sourceTitle, tagMask, hash,
+		`UPDATE clipboard_entry SET updated_at = ?, source_exe = ?, source_title = ?, tag_mask = ?, content_length = ? WHERE content_hash = ?`,
+		now, sourceEXE, sourceTitle, tagMask, contentLength, hash,
 	)
 	if err != nil {
 		return false, err
@@ -176,10 +181,10 @@ func (s *sqliteStore) UpsertDedup(hash, sourceEXE, sourceTitle string, tagMask i
 	return n > 0, nil
 }
 
-func (s *sqliteStore) InsertEntry(hash, sourceEXE, sourceTitle string, tagMask int, now string) (int64, error) {
+func (s *sqliteStore) InsertEntry(hash, sourceEXE, sourceTitle string, tagMask int, now string, contentLength int) (int64, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO clipboard_entry (content_hash, source_exe, source_title, tag_mask, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		hash, sourceEXE, sourceTitle, tagMask, now, now,
+		`INSERT INTO clipboard_entry (content_hash, source_exe, source_title, tag_mask, content_length, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		hash, sourceEXE, sourceTitle, tagMask, contentLength, now, now,
 	)
 	if err != nil {
 		return 0, err
@@ -261,12 +266,12 @@ func (s *sqliteStore) GetStats() (Stats, error) {
 }
 
 func (s *sqliteStore) Cleanup(retainDays int) (int64, []string, error) {
+	cutoff := fmt.Sprintf("strftime('%%Y-%%m-%%dT%%H:%%M:%%f', 'now', '-%d days')", retainDays)
+
 	rows, err := s.db.Query(
 		`SELECT f.file_path FROM clipboard_format f
 		 JOIN clipboard_entry e ON f.entry_id = e.id
-		 WHERE e.updated_at < `+
-			fmt.Sprintf("strftime('%%Y-%%m-%%dT%%H:%%M:%%f', 'now', '-%d days')", retainDays)+
-			` AND f.file_path != ''`,
+		 WHERE e.updated_at < `+cutoff+` AND e.is_favorite = 0 AND f.file_path != ''`,
 	)
 	if err == nil {
 		defer rows.Close()
@@ -280,8 +285,7 @@ func (s *sqliteStore) Cleanup(retainDays int) (int64, []string, error) {
 	}
 
 	result, err := s.db.Exec(
-		`DELETE FROM clipboard_entry WHERE updated_at < `+
-			fmt.Sprintf("strftime('%%Y-%%m-%%dT%%H:%%M:%%f', 'now', '-%d days')", retainDays),
+		`DELETE FROM clipboard_entry WHERE updated_at < `+cutoff+` AND is_favorite = 0`,
 	)
 	if err != nil {
 		return 0, nil, err
@@ -290,20 +294,37 @@ func (s *sqliteStore) Cleanup(retainDays int) (int64, []string, error) {
 	return n, rowsPathOrNil(rows), nil
 }
 
-func (s *sqliteStore) ClearAll() ([]string, error) {
-	rows, err := s.db.Query(`SELECT file_path FROM clipboard_format WHERE file_path != ''`)
-	if err == nil {
-		defer rows.Close()
-		var paths []string
-		for rows.Next() {
-			var p string
-			if err := rows.Scan(&p); err == nil && p != "" {
-				paths = append(paths, p)
+func (s *sqliteStore) ClearAll(keepFavorites bool) ([]string, error) {
+	// Step 1: collect image paths (fully consume rows before DELETE).
+	var paths []string
+	{
+		var query string
+		if keepFavorites {
+			query = `SELECT f.file_path FROM clipboard_format f
+				JOIN clipboard_entry e ON f.entry_id = e.id
+				WHERE e.is_favorite = 0 AND f.file_path != ''`
+		} else {
+			query = `SELECT file_path FROM clipboard_format WHERE file_path != ''`
+		}
+		rows, err := s.db.Query(query)
+		if err == nil {
+			for rows.Next() {
+				var p string
+				if err := rows.Scan(&p); err == nil && p != "" {
+					paths = append(paths, p)
+				}
 			}
+			rows.Close()
 		}
 	}
-	_, err = s.db.Exec(`DELETE FROM clipboard_entry`)
-	return nil, err
+
+	// Step 2: delete entries (no open result sets at this point).
+	if keepFavorites {
+		_, err := s.db.Exec(`DELETE FROM clipboard_entry WHERE is_favorite = 0`)
+		return paths, err
+	}
+	_, err := s.db.Exec(`DELETE FROM clipboard_entry`)
+	return paths, err
 }
 
 func (s *sqliteStore) HasFileFormatByHash(hash string) (bool, error) {

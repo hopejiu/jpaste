@@ -18,6 +18,8 @@ type Data struct {
 	NotifyEnabled  bool            `json:"notify_enabled"`           // show toast on new clipboard
 	PasteOrder     string          `json:"paste_order"`              // "normal" / "stack" / "queue"
 	ActionConfig   json.RawMessage `json:"action_config,omitempty"`  // frontend-managed, Go pass-through
+	SortField      string          `json:"sort_field"`               // "updated_at" / "content_length"
+	SortOrder      string          `json:"sort_order"`               // "asc" / "desc"
 }
 
 // Service reads and writes settings from a JSON file.
@@ -42,6 +44,8 @@ func NewService(basePath string) *Service {
 			NotifyEnabled:  false,
 			PasteOrder:     "normal",
 			ActionConfig:   json.RawMessage("{}"),
+			SortField:      "updated_at",
+			SortOrder:      "desc",
 		},
 	}
 }
@@ -70,6 +74,8 @@ func Defaults() Data {
 		StartMinimized: false,
 		NotifyEnabled:  false,
 		PasteOrder:     "normal",
+		SortField:      "updated_at",
+		SortOrder:      "desc",
 	}
 }
 
@@ -150,5 +156,7 @@ func changedExceptHotkey(a, b Data) bool {
 		a.AutoStart != b.AutoStart ||
 		a.StartMinimized != b.StartMinimized ||
 		a.NotifyEnabled != b.NotifyEnabled ||
-		a.PasteOrder != b.PasteOrder
+		a.PasteOrder != b.PasteOrder ||
+		a.SortField != b.SortField ||
+		a.SortOrder != b.SortOrder
 }

@@ -91,7 +91,8 @@ func (s *Service) CaptureEntry(data clipboard.CapturedData) (*clipboard.Entry, b
 		// Existing file entries carry CF_HDROP data that text-only copies lack.
 		existingHasFile, _ := s.store.HasFileFormatByHash(data.PrimaryHash)
 		if !existingHasFile {
-			deduped, err := s.store.UpsertDedup(data.PrimaryHash, data.SourceEXE, data.SourceTitle, tagMask, now)
+			contentLength := computeTextLength(data.Formats)
+			deduped, err := s.store.UpsertDedup(data.PrimaryHash, data.SourceEXE, data.SourceTitle, tagMask, now, contentLength)
 			if err != nil {
 				log.Printf("[history] dedup err: %v", err)
 			}
@@ -103,7 +104,8 @@ func (s *Service) CaptureEntry(data clipboard.CapturedData) (*clipboard.Entry, b
 	}
 
 	// Insert new entry.
-	id, err := s.store.InsertEntry(data.PrimaryHash, data.SourceEXE, data.SourceTitle, tagMask, now)
+	contentLength := computeTextLength(data.Formats)
+	id, err := s.store.InsertEntry(data.PrimaryHash, data.SourceEXE, data.SourceTitle, tagMask, now, contentLength)
 	if err != nil {
 		log.Printf("[history] insert entry err: %v", err)
 		return nil, false
@@ -160,12 +162,21 @@ func (s *Service) pushToSync(hash string, formats []clipboard.CapturedFormat) {
 }
 
 // GetHistory returns entries with cursor-based pagination and tag filtering.
-// tagMask=0 means all, afterUpdatedAt="" means first page.
+// tagMask=0 means all, afterCursor1="" means first page.
 // tagMask bit 5 (value 32) triggers favorites-only filter.
-func (s *Service) GetHistory(search string, tagMask int, afterUpdatedAt string, afterID int64) (entries []clipboard.Entry, hasMore bool, err error) {
+// sortField: "updated_at" | "content_length", sortOrder: "asc" | "desc"
+func (s *Service) GetHistory(search string, tagMask int, afterCursor1 string, afterID int64, sortField string, sortOrder string) (entries []clipboard.Entry, hasMore bool, err error) {
 	pageSize := 20 + 1 // one extra to detect hasMore
 
-	rows, err := s.store.QueryHistory(search, tagMask, afterUpdatedAt, afterID, pageSize)
+	if sortField == "" {
+		sortField = "updated_at"
+	}
+	if sortOrder == "" {
+		sortOrder = "DESC"
+	}
+	sortOrder = strings.ToUpper(sortOrder)
+
+	rows, err := s.store.QueryHistory(search, tagMask, afterCursor1, afterID, pageSize, sortField, sortOrder)
 	if err != nil {
 		return nil, false, fmt.Errorf("query history: %w", err)
 	}
@@ -201,15 +212,16 @@ func (s *Service) GetHistory(search string, tagMask int, afterUpdatedAt string, 
 			}
 		}
 		entries = append(entries, clipboard.Entry{
-			ID:          r.ID,
-			ContentHash: r.ContentHash,
-			Content:     text,
-			SourceEXE:   r.SourceEXE,
-			SourceTitle: r.SourceTitle,
-			Formats:     fmts,
-			IsFavorite:  r.IsFavorite,
-			CreatedAt:   r.CreatedAt,
-			UpdatedAt:   r.UpdatedAt,
+			ID:            r.ID,
+			ContentHash:   r.ContentHash,
+			Content:       text,
+			SourceEXE:     r.SourceEXE,
+			SourceTitle:   r.SourceTitle,
+			Formats:       fmts,
+			IsFavorite:    r.IsFavorite,
+			CreatedAt:     r.CreatedAt,
+			UpdatedAt:     r.UpdatedAt,
+			ContentLength: r.ContentLength,
 		})
 	}
 	return entries, hasMore, nil
@@ -218,19 +230,27 @@ func (s *Service) GetHistory(search string, tagMask int, afterUpdatedAt string, 
 // GetHistoryRegex returns all entries matching a regex pattern.
 // Loads data in batches and filters with Go regexp — no cursor needed since results
 // are typically small subsets of the full history.
-func (s *Service) GetHistoryRegex(pattern string, tagMask int) (entries []clipboard.Entry, err error) {
+func (s *Service) GetHistoryRegex(pattern string, tagMask int, sortField string, sortOrder string) (entries []clipboard.Entry, err error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("invalid regex: %w", err)
 	}
 
-	cursorAt := ""
+	if sortField == "" {
+		sortField = "updated_at"
+	}
+	if sortOrder == "" {
+		sortOrder = "DESC"
+	}
+	sortOrder = strings.ToUpper(sortOrder)
+
+	var cursor1 string
 	cursorID := int64(0)
 	batchSize := 200
 	var all []clipboard.Entry
 
 	for {
-		page, hasMore, pageErr := s.GetHistory("", tagMask, cursorAt, cursorID)
+		page, hasMore, pageErr := s.GetHistory("", tagMask, cursor1, cursorID, sortField, sortOrder)
 		if pageErr != nil {
 			return nil, pageErr
 		}
@@ -243,7 +263,11 @@ func (s *Service) GetHistoryRegex(pattern string, tagMask int) (entries []clipbo
 			break
 		}
 		last := page[len(page)-1]
-		cursorAt = last.UpdatedAt
+		if sortField == "content_length" {
+			cursor1 = fmt.Sprintf("%d", last.ContentLength)
+		} else {
+			cursor1 = last.UpdatedAt
+		}
 		cursorID = last.ID
 		// Safety limit: don't scan more than 5000 entries.
 		if len(all) > 5000 || len(page) >= batchSize*10 {
@@ -332,8 +356,13 @@ func (s *Service) GetStats() (Stats, error) {
 }
 
 // Cleanup removes entries older than retainDays and their image files.
+// Favorited entries (is_favorite = 1) are exempt from cleanup.
 func (s *Service) Cleanup(retainDays int) (int64, error) {
 	deleted, paths, err := s.store.Cleanup(retainDays)
+	if err != nil {
+		log.Printf("[Cleanup] error: %v", err)
+	}
+	log.Printf("[Cleanup] retainDays=%d deleted=%d imagePaths=%d", retainDays, deleted, len(paths))
 	if s.imageStore != nil && len(paths) > 0 {
 		s.imageStore.DeleteByEntry(paths)
 		s.imageStore.CleanEmptyDirs()
@@ -342,13 +371,21 @@ func (s *Service) Cleanup(retainDays int) (int64, error) {
 }
 
 // ClearAll deletes all clipboard entries and their image files.
-func (s *Service) ClearAll() error {
-	paths, err := s.store.ClearAll()
+// If keepFavorites is true, favorited entries are preserved.
+func (s *Service) ClearAll(keepFavorites bool) error {
+	log.Printf("[ClearAll] keepFavorites=%v", keepFavorites)
+	paths, err := s.store.ClearAll(keepFavorites)
+	if err != nil {
+		log.Printf("[ClearAll] store error: %v", err)
+		return err
+	}
+	log.Printf("[ClearAll] deleted, image paths=%d", len(paths))
 	if s.imageStore != nil && len(paths) > 0 {
 		s.imageStore.DeleteByEntry(paths)
 		s.imageStore.CleanEmptyDirs()
+		log.Printf("[ClearAll] image cleanup done")
 	}
-	return err
+	return nil
 }
 
 // GetEntryContent returns the CF_UNICODETEXT content for the given entry ID.
@@ -385,6 +422,15 @@ func (s *Service) GetImageDataURL(entryID int64) (string, error) {
 }
 
 // --- helpers ---
+
+func computeTextLength(formats []clipboard.CapturedFormat) int {
+	for _, f := range formats {
+		if f.FormatType == clipboard.CF_UNICODETEXT && f.Text != "" {
+			return len(f.Text)
+		}
+	}
+	return 0
+}
 
 func sha256Hash(text string, raw []byte) string {
 	var input []byte

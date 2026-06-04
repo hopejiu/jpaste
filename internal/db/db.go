@@ -65,5 +65,14 @@ func migrate(db *sql.DB) error {
 	// Migration: add is_favorite column to existing databases.
 	db.Exec(`ALTER TABLE clipboard_entry ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0`)
 
+	// Migration: add content_length column to existing databases.
+	db.Exec(`ALTER TABLE clipboard_entry ADD COLUMN content_length INTEGER NOT NULL DEFAULT 0`)
+
+	// Backfill content_length for existing text entries (format_type=13 = CF_UNICODETEXT).
+	db.Exec(`UPDATE clipboard_entry SET content_length = (
+		SELECT COALESCE(LENGTH(f.content), 0) FROM clipboard_format f
+		WHERE f.entry_id = clipboard_entry.id AND f.format_type = 13
+	) WHERE content_length = 0`)
+
 	return nil
 }

@@ -33,6 +33,7 @@ export default function SettingsPage() {
   // Stats state.
   const [stats, setStats] = useState({ count: 0, total_bytes: 0 })
   const [clearing, setClearing] = useState(false)
+  const [showClearModal, setShowClearModal] = useState(false)
 
   useEffect(() => {
     HistoryService.GetStats()
@@ -103,12 +104,19 @@ export default function SettingsPage() {
     handleSave({ action_config: cfg })
   }
 
-  const handleClearAll = async () => {
-    if (!window.confirm('确定要清空全部剪贴板历史吗？此操作不可撤销。')) return
+  const doClearAll = async (keepFavorites) => {
+    setShowClearModal(false)
     setClearing(true)
     try {
-      await clearAll()
-      setStats({ count: 0, total_bytes: 0 })
+      // Timeout safety: avoid UI freeze if backend hangs.
+      await Promise.race([
+        clearAll(keepFavorites),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('clearAll timeout')), 10000)),
+      ])
+      // Fetch real stats after deletion (some entries may remain if keepFavorites).
+      HistoryService.GetStats().then(s => { if (s) setStats(s) }).catch(() => {})
+    } catch (err) {
+      console.error('ClearAll failed:', err)
     } finally {
       setClearing(false)
     }
@@ -184,7 +192,7 @@ export default function SettingsPage() {
           </div>
           <button
             style={{ ...styles.clearAllBtn, ...(clearing ? { opacity: 0.6 } : {}) }}
-            onClick={handleClearAll}
+            onClick={() => setShowClearModal(true)}
             disabled={clearing || stats.count === 0}
           >
             <Trash2 size={14} />
@@ -266,6 +274,76 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Clear All Confirmation Modal */}
+      {showClearModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 3000,
+        }} onClick={() => setShowClearModal(false)}>
+          <div style={{
+            background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
+            padding: '24px', width: '340px', maxWidth: '90vw',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--font-size-lg)', fontWeight: 600 }}>
+              清空剪贴板历史
+            </h3>
+            <p style={{ margin: '0 0 20px', fontSize: 'var(--font-size-sm)', color: 'var(--color-muted)', lineHeight: 1.5 }}>
+              共有 <strong>{stats.count.toLocaleString()}</strong> 条记录。选择清空方式：
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button
+                onClick={() => doClearAll(false)}
+                style={{
+                  padding: '10px 16px', borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+                  color: 'var(--color-foreground)', cursor: 'pointer',
+                  fontSize: 'var(--font-size-sm)', fontFamily: 'inherit',
+                  textAlign: 'left', transition: 'background var(--transition-fast)',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface)'}
+              >
+                <div style={{ fontWeight: 600 }}>全部删除</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '2px' }}>
+                  删除所有记录（包括收藏），不可撤销
+                </div>
+              </button>
+              <button
+                onClick={() => doClearAll(true)}
+                style={{
+                  padding: '10px 16px', borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+                  color: 'var(--color-foreground)', cursor: 'pointer',
+                  fontSize: 'var(--font-size-sm)', fontFamily: 'inherit',
+                  textAlign: 'left', transition: 'background var(--transition-fast)',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface)'}
+              >
+                <div style={{ fontWeight: 600 }}>保留收藏</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '2px' }}>
+                  只删除未收藏的记录，收藏内容保留
+                </div>
+              </button>
+              <button
+                onClick={() => setShowClearModal(false)}
+                style={{
+                  padding: '8px', borderRadius: 'var(--radius-md)',
+                  border: 'none', background: 'transparent',
+                  color: 'var(--color-muted)', cursor: 'pointer',
+                  fontSize: 'var(--font-size-sm)', fontFamily: 'inherit',
+                  marginTop: '4px',
+                }}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

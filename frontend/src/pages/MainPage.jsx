@@ -9,6 +9,7 @@ import { useActionDetection } from '../hooks/useActionDetection'
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation'
 import { useContextMenu } from '../hooks/useContextMenu'
 import SearchBar from '../components/SearchBar'
+import SortDropdown from '../components/SortDropdown'
 import TagTabs from '../components/TagTabs'
 import EntryList from '../components/EntryList'
 import ActionModal from '../components/ActionModal'
@@ -170,6 +171,7 @@ export default function MainPage() {
             settingsBtn: styles.settingsBtn,
           }}
         />
+        <SortDropdown />
       </div>
 
 

@@ -29,6 +29,9 @@ A **Paste Order** sub-mode (`paste_order: "queue"`). Items are consumed from the
 ### Image Store
 An external file directory at `%APPDATA%/jPaste/images/{YYYY-MM-DD}/` for storing clipboard image payloads. Organized by date folders for easy cleanup — when expired entries are deleted, the corresponding date folders and image files are removed together. Images are excluded from WebDAV sync.
 
+### Search Sort Order
+A user preference persisted in `settings.json` (`sort_field`, `sort_order`) controlling the order of clipboard history results. Two sort fields: `updated_at` (last-updated time) and `content_length` (byte length of `CF_UNICODETEXT` content, stored as a redundant column on `clipboard_entry`). Each supports `DESC` (default) and `ASC`. Image-only entries have `content_length = 0`. The sort selector is a dropdown in the search bar; changing it resets pagination and reloads from the first page.
+
 ### Entry Tag
 A classification label assigned to a **Clipboard Entry** at capture time. Tags are determined by a mixed strategy: **format-driven** (which clipboard formats are present) and **content-driven** (pattern matching on the text payload). An entry can carry multiple tags simultaneously — e.g., a browser URL copy carries both `url` and `text`.
 

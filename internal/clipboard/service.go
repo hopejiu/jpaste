@@ -166,15 +166,16 @@ func ClearSelfWrite() {
 
 // Entry is the JSON-serializable clipboard history item sent to the frontend.
 type Entry struct {
-	ID          int64         `json:"id"`
-	ContentHash string        `json:"content_hash"`
-	Content     string        `json:"content"` // CF_UNICODETEXT for backward compat
-	SourceEXE   string        `json:"source_exe"`
-	SourceTitle string        `json:"source_title"`
-	Formats     []FormatEntry `json:"formats"`
-	IsFavorite  bool          `json:"is_favorite"`
-	CreatedAt   string        `json:"created_at"`
-	UpdatedAt   string        `json:"updated_at"`
+	ID            int64         `json:"id"`
+	ContentHash   string        `json:"content_hash"`
+	Content       string        `json:"content"` // CF_UNICODETEXT for backward compat
+	SourceEXE     string        `json:"source_exe"`
+	SourceTitle   string        `json:"source_title"`
+	Formats       []FormatEntry `json:"formats"`
+	IsFavorite    bool          `json:"is_favorite"`
+	CreatedAt     string        `json:"created_at"`
+	UpdatedAt     string        `json:"updated_at"`
+	ContentLength int           `json:"content_length"`
 }
 
 // FormatEntry is one format payload within a clipboard entry.
