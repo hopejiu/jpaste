@@ -12,6 +12,7 @@ import SearchBar from '../components/SearchBar'
 import TagTabs from '../components/TagTabs'
 import EntryList from '../components/EntryList'
 import ActionModal from '../components/ActionModal'
+import ToggleSwitch from '../components/ToggleSwitch'
 import { styles } from './MainPage.styles'
 
 export default function MainPage() {
@@ -22,7 +23,7 @@ export default function MainPage() {
     useEntry, deleteEntry, toggleFavorite,
   } = useClipboard()
 
-  const { settings, syncStatus } = useApp()
+  const { settings, syncStatus, toggleStackMode } = useApp()
 
   const [focusedIdx, setFocusedIdx] = useState(-1)
   const [modal, setModal] = useState(null)
@@ -172,6 +173,7 @@ export default function MainPage() {
         />
       </div>
 
+
       {/* Tag Tabs */}
       <TagTabs
         tags={TAGS}
@@ -214,7 +216,15 @@ export default function MainPage() {
 
       {/* Footer */}
       <div style={styles.footer}>
-        <span style={styles.footerText}>Ctrl+L 搜索 · Ctrl+E 编辑 · Ctrl+1-9 选择 · ←→标签 · Del 删除 · Space 收藏 · Home/End/Page↑↓ · Esc 隐藏</span>
+        <span style={styles.footerText}>Ctrl+L搜索 · Ctrl+E编辑 · Del删除 · Space收藏 · Esc隐藏</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+          <span style={{ fontSize: '11px', color: settings.stack_mode_enabled ? 'var(--color-primary)' : 'var(--color-muted)' }}>栈</span>
+          <ToggleSwitch
+            checked={!!settings.stack_mode_enabled}
+            onChange={toggleStackMode}
+            label="切换栈模式"
+          />
+        </div>
       </div>
 
       {/* Action Modal */}

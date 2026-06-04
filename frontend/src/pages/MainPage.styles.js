@@ -107,7 +107,8 @@ export const styles = {
   },
   footer: {
     borderTop: '1px solid var(--color-border)', padding: '8px 16px',
-    textAlign: 'center', flexShrink: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    flexShrink: 0, gap: '8px',
   },
   footerText: { fontSize: 'var(--font-size-xs)', color: 'var(--color-muted)' },
   ctxOverlay: {

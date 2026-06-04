@@ -14,6 +14,7 @@ import (
 	"jpaste/internal/clipboard"
 	"jpaste/internal/db"
 	"jpaste/internal/events"
+	"jpaste/internal/filostack"
 	"jpaste/internal/fileop"
 	"jpaste/internal/history"
 	"jpaste/internal/hotkey"
@@ -87,6 +88,9 @@ func main() {
 		}
 	})
 
+	// FILO clipboard stack service.
+	filoStack := filostack.NewService(clipboard.WriteText)
+
 	// History service with capture pipeline hooks.
 	entryStore := history.NewSQLiteStore(conn)
 	histSvc := history.NewService(entryStore, clipboardImpl{},
@@ -158,6 +162,26 @@ func main() {
 		} else {
 			applog.Info("dedup entry", "hash", data.PrimaryHash[:12])
 		}
+
+		// Push text to FILO stack when stack mode is enabled.
+		stackEnabled := filoStack.Enabled()
+		isSelfWrite := clipboard.IsSelfWrite(data)
+		var textToPush string
+		for _, f := range data.Formats {
+			if clipboard.IsTextFormat(f.FormatType) && f.Text != "" {
+				textToPush = f.Text
+				break
+			}
+		}
+		applog.Info("stack decision",
+			"stackEnabled", stackEnabled,
+			"isSelfWrite", isSelfWrite,
+			"text", previewText(textToPush),
+			"hash", data.PrimaryHash[:12],
+		)
+		if stackEnabled && !isSelfWrite && textToPush != "" {
+			filoStack.Push(textToPush)
+		}
 	})
 
 	// Create Wails app.
@@ -178,20 +202,27 @@ func main() {
 
 	handle.Wire(app)
 
+	// F12 打开开发者工具（调试用，生产构建也需要保留以便排查问题）。
+	app.KeyBinding.Add("F12", func(window application.Window) {
+		applog.Info("F12 pressed, opening DevTools")
+		window.OpenDevTools()
+	})
+
 	openFileManagerFn = func(path string, selectFile bool) error {
 		return app.Env.OpenFileManager(path, selectFile)
 	}
 
-	createJsonWindowFn = func(path, title string) {
+		createJsonWindowFn = func(path, title string) {
 		applog.Info("secondary window", "title", title)
 		win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-			Title:            title,
-			Width:            1200,
-			Height:           800,
-			MinWidth:         600,
-			MinHeight:        400,
-			URL:              path,
-			BackgroundColour: application.NewRGB(248, 250, 252),
+			Title:                      title,
+			Width:                      1200,
+			Height:                     800,
+			MinWidth:                   600,
+			MinHeight:                  400,
+			URL:                        path,
+			BackgroundColour:           application.NewRGB(248, 250, 252),
+			DefaultContextMenuDisabled: true,
 		})
 		win.Show()
 		applog.Info("secondary window shown", "title", title)
@@ -200,7 +231,8 @@ func main() {
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "jPaste", Width: 480, MinWidth: 360, Height: 560, MinHeight: 300,
 		Hidden: false, URL: "/",
-		BackgroundColour: application.NewRGB(248, 250, 252),
+		BackgroundColour:           application.NewRGB(248, 250, 252),
+		DefaultContextMenuDisabled: true,
 	})
 
 	doPaste = func() {
@@ -210,6 +242,7 @@ func main() {
 		time.Sleep(200 * time.Millisecond)
 		win.Hide()
 		time.Sleep(50 * time.Millisecond)
+		filoStack.SetSelfPaste()
 		clipboard.Paste()
 	}
 
@@ -254,6 +287,13 @@ func main() {
 				applog.Info("cleaned up old entries", "count", n, "retain_days", new.RetainDays)
 			}
 		}
+		if old.StackModeEnabled != new.StackModeEnabled {
+			applog.Info("stack mode change", "enabled", new.StackModeEnabled)
+			filoStack.SetEnabled(new.StackModeEnabled)
+			if handle.app != nil {
+				handle.Emit(events.StackModeChanged, new.StackModeEnabled)
+			}
+		}
 		if data, err := json.Marshal(new); err == nil {
 			syncSvc.PushSettings(data)
 		}
@@ -261,6 +301,14 @@ func main() {
 
 	defer hotkey.UnregisterAll()
 	defer notify.Shutdown()
+	defer filoStack.ServiceShutdown()
+
+	// Activate stack mode if setting was persisted from a previous session.
+	if sett.GetSettings().StackModeEnabled {
+		applog.Info("initial stack mode enabled from saved settings")
+		filoStack.SetEnabled(true)
+	}
+
 	if err := app.Run(); err != nil {
 		applog.Error("app.Run", "error", err)
 		os.Exit(1)

@@ -559,6 +559,7 @@ func WriteFilePaths(paths []string) bool {
 // ---------------------------------------------------------------------------
 
 func WriteText(text string) bool {
+	MarkSelfWrite(text)
 	u16, err := syscall.UTF16FromString(text)
 	if err != nil {
 		return false

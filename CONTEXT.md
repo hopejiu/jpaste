@@ -17,6 +17,9 @@ Text-based formats (`CF_UNICODETEXT`, `CF_HTML`, `CF_RTF`, `CF_HDROP`) are store
 ### Clipboard Source
 The application that wrote the current clipboard content. Captured via `GetClipboardOwner()` → `GetWindowThreadProcessId()` → `OpenProcess()` + `QueryFullProcessImageName()` to record the full executable path, plus `GetWindowText()` for the window title at time of copy. NULL owner (clipboard cleared or cross-session) stores empty strings.
 
+### Clipboard Stack
+An optional FILO (LIFO) mode controlled by `stack_mode_enabled` in settings. When enabled, a `WH_KEYBOARD_LL` global hook intercepts user Ctrl+V, pops the most recently captured text from an in-memory stack, writes it to the system clipboard, and lets the original Ctrl+V pass through. Only `CF_UNICODETEXT` (plain text) is supported. jPaste's own clipboard writes (`UseEntry` paste, keyboard hook pop) and simulated paste (`keybd_event` in `clipboard.Paste()`) are guarded by self-write hash and self-paste timestamp flags to avoid re-pushing / re-popping. Disabling the mode stops the hook and clears the stack.
+
 ### Image Store
 An external file directory at `%APPDATA%/jPaste/images/{YYYY-MM-DD}/` for storing clipboard image payloads. Organized by date folders for easy cleanup — when expired entries are deleted, the corresponding date folders and image files are removed together. Images are excluded from WebDAV sync.
 

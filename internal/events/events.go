@@ -24,3 +24,8 @@ const (
 const (
 	Navigate = "navigate"
 )
+
+// Stack mode
+const (
+	StackModeChanged = "stack-mode-changed"
+)

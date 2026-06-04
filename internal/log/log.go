@@ -3,6 +3,7 @@
 package log
 
 import (
+	"io"
 	"log"
 	"log/slog"
 	"os"
@@ -59,10 +60,13 @@ func switchLog() error {
 	curFile = f
 	curName = name
 
-	log.SetOutput(f)
+	// MultiWriter: log to both file and stderr (terminal).
+	mw := io.MultiWriter(f, os.Stderr)
+
+	log.SetOutput(mw)
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	h := slog.NewTextHandler(f, &slog.HandlerOptions{Level: slog.LevelDebug})
+	h := slog.NewTextHandler(mw, &slog.HandlerOptions{Level: slog.LevelDebug})
 	slog.SetDefault(slog.New(h))
 	return nil
 }

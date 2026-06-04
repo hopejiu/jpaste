@@ -12,6 +12,9 @@ export const EVENTS = {
   WINDOW_SHOWN:  'window-shown',
   WINDOW_HIDING: 'window-hiding',
 
-  // Navigation
+// Navigation
   NAVIGATE: 'navigate',
+
+  // Stack mode
+  STACK_MODE_CHANGED: 'stack-mode-changed',
 }

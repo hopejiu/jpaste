@@ -10,13 +10,14 @@ import (
 
 // Data holds user-configurable settings.
 type Data struct {
-	Hotkey        string          `json:"hotkey"`                  // "Alt+V"
-	RetainDays    int             `json:"retain_days"`             // 30
-	DefaultAction string          `json:"default_action"`          // "copy" or "paste"
-	AutoStart     bool            `json:"auto_start"`
-	StartMinimized bool           `json:"start_minimized"`         // start minimized to tray
-	NotifyEnabled bool            `json:"notify_enabled"`          // show toast on new clipboard
-	ActionConfig  json.RawMessage `json:"action_config,omitempty"` // frontend-managed, Go pass-through
+	Hotkey           string          `json:"hotkey"`                      // "Alt+V"
+	RetainDays       int             `json:"retain_days"`                 // 30
+	DefaultAction    string          `json:"default_action"`              // "copy" or "paste"
+	AutoStart        bool            `json:"auto_start"`
+	StartMinimized   bool            `json:"start_minimized"`             // start minimized to tray
+	NotifyEnabled    bool            `json:"notify_enabled"`              // show toast on new clipboard
+	StackModeEnabled bool            `json:"stack_mode_enabled"`          // FILO clipboard stack
+	ActionConfig     json.RawMessage `json:"action_config,omitempty"`     // frontend-managed, Go pass-through
 }
 
 // Service reads and writes settings from a JSON file.
@@ -33,13 +34,14 @@ func NewService(basePath string) *Service {
 	return &Service{
 		path: filepath.Join(basePath, "settings.json"),
 		data: Data{
-			Hotkey:        "Alt+V",
-			RetainDays:    30,
-			DefaultAction: "copy",
-			AutoStart:      false,
-			StartMinimized: false,
-			NotifyEnabled:  false,
-			ActionConfig:   json.RawMessage("{}"),
+			Hotkey:           "Alt+V",
+			RetainDays:       30,
+			DefaultAction:    "copy",
+			AutoStart:        false,
+			StartMinimized:   false,
+			NotifyEnabled:    false,
+			StackModeEnabled: false,
+			ActionConfig:     json.RawMessage("{}"),
 		},
 	}
 }
@@ -61,12 +63,13 @@ func (s *Service) OnSettingsChange(fn func(old, new Data)) {
 // Defaults returns a fresh settings struct with defaults.
 func Defaults() Data {
 	return Data{
-		Hotkey:         "Alt+V",
-		RetainDays:     30,
-		DefaultAction:  "copy",
-		AutoStart:      false,
-		StartMinimized: false,
-		NotifyEnabled:  false,
+		Hotkey:           "Alt+V",
+		RetainDays:       30,
+		DefaultAction:    "copy",
+		AutoStart:        false,
+		StartMinimized:   false,
+		NotifyEnabled:    false,
+		StackModeEnabled: false,
 	}
 }
 
@@ -146,5 +149,6 @@ func changedExceptHotkey(a, b Data) bool {
 		a.DefaultAction != b.DefaultAction ||
 		a.AutoStart != b.AutoStart ||
 		a.StartMinimized != b.StartMinimized ||
-		a.NotifyEnabled != b.NotifyEnabled
+		a.NotifyEnabled != b.NotifyEnabled ||
+		a.StackModeEnabled != b.StackModeEnabled
 }
