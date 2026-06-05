@@ -134,6 +134,10 @@ export function ClipboardProvider({ children, initialSortField, initialSortOrder
 
   // refreshHistory: first page (resets cursor).
   const refreshHistory = useCallback(async (searchTerm = '', tagMask = TAG_ALL, sortField, sortOrder) => {
+    // When no search term, only allow sorting by update time (not content_length).
+    if (!searchTerm) {
+      sortField = 'updated_at'
+    }
     dispatch({ type: 'LOAD_START' })
     try {
       const result = await HistoryService.GetHistory(searchTerm, tagMask, '', 0, sortField, sortOrder)
@@ -158,14 +162,16 @@ export function ClipboardProvider({ children, initialSortField, initialSortOrder
     if (!s.hasMore || s.loading || s.isRegex) return
     dispatch({ type: 'LOAD_START' })
     const { updatedAt, id } = s.cursor
+    const sortField = s.search ? s.sortField : 'updated_at'
+    const sortOrder = s.sortOrder
     try {
-      const result = await HistoryService.GetHistory(s.search, s.activeTag, updatedAt, id, s.sortField, s.sortOrder)
+      const result = await HistoryService.GetHistory(s.search, s.activeTag, updatedAt, id, sortField, sortOrder)
       if (Array.isArray(result)) {
         const [list, more] = result
         if (list && list.length > 0) {
           dispatch({
             type: 'LOAD_MORE',
-            payload: { list, hasMore: !!more, cursor: cursorFromList(list, s.sortField, s.sortOrder) },
+            payload: { list, hasMore: !!more, cursor: cursorFromList(list, sortField, sortOrder) },
           })
         } else {
           dispatch({ type: 'LOAD_ERROR' })

@@ -8,6 +8,7 @@ import MainPage from './pages/MainPage'
 import SettingsPage from './pages/SettingsPage'
 import JsonViewPage from './pages/JsonViewPage'
 import ImageViewPage from './pages/ImageViewPage'
+import ToastPage from './pages/ToastPage'
 
 function AppContent() {
   const navigate = useNavigate()
@@ -57,6 +58,7 @@ function AppContent() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/json-view" element={<JsonViewPage />} />
         <Route path="/image-view" element={<ImageViewPage />} />
+        <Route path="/toast" element={<ToastPage />} />
       </Routes>
     </div>
   )

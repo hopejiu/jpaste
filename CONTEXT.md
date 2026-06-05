@@ -66,10 +66,10 @@ A system-wide keyboard shortcut that shows/hides the jPaste window. Default: `Al
 How long clipboard entries are kept before automatic cleanup. Default: 30 days. Cleanup runs on app startup and periodically.
 
 ### JSON Viewer Window
-A separate Wails window opened for structured JSON viewing and editing. When a clipboard entry is detected as valid JSON and the user clicks "查看 JSON", the `jsonviewer.Service` on the Go side stores the JSON content against a random 16-character hex token, then creates a new window at `/json-view?token=<token>`. The front-end `JsonViewPage` retrieves the content via `GetJsonViewerData(token)` (cached for 60s TTL to survive React StrictMode remounts) and renders it with the [jsoneditor](https://github.com/josdejong/jsoneditor) component in `tree` mode with optional `code` (Ace editor) mode toggle. The editor supports full CRUD operations, undo/redo, search, sort, drag-and-drop, and JSON formatting. The JSON viewer window is independent — it can stay open while the user continues using the main window.
+A separate Wails window opened for structured JSON viewing and editing. When a clipboard entry is detected as valid JSON and the user clicks "查看 JSON", the `jsonviewer.Service` calls the create-window callback with `/json-view?id=<entryID>`. The front-end `JsonViewPage` parses the `id` query parameter and retrieves the entry content via the `HistoryService.GetEntryContent(entryId)` binding, then renders it with the [jsoneditor](https://github.com/josdejong/jsoneditor) component in `tree` mode with optional `code` (Ace editor) mode toggle. The editor supports full CRUD operations, undo/redo, search, sort, drag-and-drop, and JSON formatting. The JSON viewer window is independent — it can stay open while the user continues using the main window.
 
 ### Toast
-A native Windows notification shown in the bottom-right corner when new clipboard content is captured. Duration: 3 seconds.
+A small frameless Wails window shown at the bottom-right of the primary screen when new clipboard content is captured. White background (same as JSON viewer initial state), 360×80. Appears with 200ms fade-in, stays for ~2.6s, exits with 150ms fade-out. IgnoreMouseEvents + no focus steal. Uses a token-store pattern: Go stores `{title, message}` keyed by a random hex token, the window URL is `/toast?token=X`, and the front-end retrieves the payload via `toast.Service.GetToastData(token)` binding.
 
 ### Temporary File
 A `.txt` file created in `%TEMP%` with the selected entry's content, then opened in the user's preferred text editor (VS Code first, then system default).
@@ -104,8 +104,8 @@ Bidirectional merge of clipboard entries and settings across machines via WebDAV
 │  Go Backend                                            │
 │  ┌──────────┐ ┌───────────────┐  ┌─────────────────┐  │
 │  │Clipboard │ │ HistoryService│  │  JsonViewerSvc  │  │
-│  │ Service  │ │               │  │ (token store +  │  │
-│  │(lxn/win) │ └───────────────┘  │  window create) │  │
+│  │ Service  │ │               │  │  window create) │  │
+│  │(lxn/win) │ └───────────────┘  └─────────────────┘  │
 │  └──────────┘ ┌───────────────┐  └─────────────────┘  │
 │               │ ImageStore    │                       │
 │  ┌──────────┐ └───────────────┘                       │
@@ -155,7 +155,7 @@ The six built-in action modules:
 | Module    | Detection Rule                     | Behavior              | Implementation |
 |-----------|------------------------------------|-----------------------|----------------|
 | math      | Only digits/ops/parens, >=1 operator | Editable expression → eval in modal | Pure JS (`new Function`) |
-| json      | Starts with `{` or `[`, valid JSON | Opens separate window with full JSON editor (jsoneditor) in `tree` + `code` modes | Go: `jsonviewer.Service.OpenJsonViewer()` creates a new Wails window at `/json-view?token=xxx`, front-end retrieves data via `GetJsonViewerData(token)` |
+| json      | Starts with `{` or `[`, valid JSON | Opens separate window with full JSON editor (jsoneditor) in `tree` + `code` modes | Go: `jsonviewer.Service.OpenJsonViewer()` creates a new Wails window at `/json-view?id=<entryID>`, front-end retrieves data via `HistoryService.GetEntryContent(id)` |
 | url       | Starts with `http://` or `https://` | Open in default browser | `Browser.OpenURL()` from `@wailsio/runtime` |
 | folder    | Starts with `X:\` or `\\` (Windows) | Open in Explorer | Go: `app.Env.OpenFileManager()` via `fileop.Service.OpenInExplorer()` |
 | base64    | Base64 charset, length>4, mod4=0   | Editable decode in modal | `atob()` |

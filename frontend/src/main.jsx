@@ -7,6 +7,7 @@ import App from './App'
 // route from window.location (used by secondary windows like /json-view /image-view).
 const isSecondaryWindow = window.location.pathname === '/json-view'
   || window.location.pathname === '/image-view'
+  || window.location.pathname === '/toast'
 const initialPath = isSecondaryWindow
   ? window.location.pathname + window.location.search
   : '/'
