@@ -100,12 +100,11 @@ func main() {
 		return s
 	}
 
-	// Toast service — frameless window for clipboard notifications.
-	var createToastWindowFn func(path string)
-
-	toastSvc := toast.NewService(func(path string) {
-		if createToastWindowFn != nil {
-			createToastWindowFn(path)
+	// Toast service — pre-created frameless window for clipboard notifications.
+	var toastEmit func(name string, data any)
+	toastSvc := toast.NewService(func(name string, data any) {
+		if toastEmit != nil {
+			toastEmit(name, data)
 		}
 	})
 
@@ -256,6 +255,123 @@ func main() {
 
 	handle.Wire(app)
 
+	// Pre-create a single toast window. Created hidden, then positioned offscreen
+	// and shown. This avoids the startup center-of-screen flash while keeping
+	// WebView2 continuously rendering (important — hidden windows freeze WebView2).
+	applog.Info("toast: pre-creating window")
+	toastWin := app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:                      "",
+		Width:                      360,
+		Height:                     80,
+		MinWidth:                   360,
+		MinHeight:                  80,
+		MaxWidth:                   360,
+		MaxHeight:                  80,
+		Frameless:                  true,
+		AlwaysOnTop:                true,
+		DisableResize:              true,
+		Hidden:                     true,
+		IgnoreMouseEvents:          true,
+		BackgroundColour:           application.NewRGB(255, 255, 255),
+		DefaultContextMenuDisabled: true,
+		URL:                        "/toast",
+		Windows: application.WindowsWindow{
+			DisableFramelessWindowDecorations: true,
+			HiddenOnTaskbar:                   true,
+		},
+	})
+	// Position offscreen while still hidden, THEN show — no center flash,
+	// and WebView2 starts rendering immediately at the offscreen location.
+	toastWin.SetPosition(-9999, -9999)
+	toastWin.Show()
+	applog.Info("toast: window pre-created and offscreened")
+
+	var toastHideTimer *time.Timer
+
+	// showToastWindow positions the window at bottom-right of the primary monitor.
+	// Called after the frontend has had time to receive the event and render.
+	showToastWindow := func() {
+		hwnd := w32.HWND(toastWin.NativeWindow())
+		if hwnd == 0 {
+			applog.Warn("toast: native window handle is zero")
+			return
+		}
+		prevHwnd := w32.GetForegroundWindow()
+
+		// Recalculate position (handles monitor / DPI changes).
+		hMonitor := w32.MonitorFromPoint(0, 0, w32.MONITOR_DEFAULTTOPRIMARY)
+		var mi w32.MONITORINFO
+		mi.CbSize = uint32(unsafe.Sizeof(mi))
+		if !w32.GetMonitorInfo(hMonitor, &mi) {
+			return
+		}
+		workRect := mi.RcWork
+		workW := int(workRect.Right - workRect.Left)
+		workH := int(workRect.Bottom - workRect.Top)
+		dpi := w32.GetDpiForWindow(hwnd)
+		scale := float64(dpi) / 96.0
+		padding := 10
+		targetX := int(float64(workW)/scale) - 360 - padding
+		targetY := int(float64(workH)/scale) - 80 - padding
+		applog.Info("toast: positioning", "x", targetX, "y", targetY, "workW", workW, "workH", workH, "scale", scale)
+
+		toastWin.SetPosition(targetX, targetY)
+
+		// Ensure the window is visible after being offscreen.
+		toastWin.Show()
+
+		// Restore focus to whatever the user was working on.
+		if prevHwnd != 0 && prevHwnd != hwnd {
+			w32.SetForegroundWindow(prevHwnd)
+		}
+		style := uint32(w32.GetWindowLong(hwnd, w32.GWL_STYLE))
+		applog.Info("toast style", "style", fmt.Sprintf("0x%08X", style))
+	}
+
+	// hideToastOffscreen moves the window offscreen instead of hiding it,
+	// because WebView2 stops rendering on hidden windows, causing a white
+	// flash when re-shown.
+	hideToastOffscreen := func() {
+		toastWin.SetPosition(-9999, -9999)
+		applog.Info("toast: window offscreened")
+	}
+
+	// Window is always visible (WebView2 must keep rendering) but positioned
+	// offscreen at (-9999,-9999) when not active. On a notification:
+	//   1. emit event → frontend renders (async)
+	//   2. 30ms later → position to bottom-right of primary monitor
+	//   3. 3s later → position back offscreen
+	// This avoids the WebView2 rendering freeze that occurs on hidden windows.
+	toastEmit = func(name string, data any) {
+		applog.Info("toast: emit start") // T0
+
+		// Emit to frontend (async delivery via IPC).
+		handle.Emit(name, data)
+		applog.Info("toast: emit done, scheduling show") // T1
+
+		// After a brief delay, show the window and start the auto-hide timer.
+		// The delay is long enough for React to render, short enough to feel instant.
+		time.AfterFunc(30*time.Millisecond, func() {
+			applog.Info("toast: 30ms elapsed, invoking show") // T2
+			application.InvokeSync(func() {
+				applog.Info("toast: InvokeSync enter") // T3
+				showToastWindow()
+				applog.Info("toast: window shown, resetting timer") // T4
+
+				// Reset auto-hide timer on main thread to avoid races.
+				if toastHideTimer != nil {
+					toastHideTimer.Stop()
+				}
+				toastHideTimer = time.AfterFunc(3*time.Second, func() {
+					application.InvokeSync(func() {
+						hideToastOffscreen()
+					})
+				})
+				applog.Info("toast: timer reset done") // T5
+			})
+		})
+	}
+
 	// Frontend log relay — listen for Events.Emit('frontend-log', ...) from JS.
 	app.Event.On(events.FrontendLog, func(event *application.CustomEvent) {
 		data, ok := event.Data.(map[string]any)
@@ -287,78 +403,7 @@ func main() {
 		return app.Env.OpenFileManager(path, selectFile)
 	}
 
-	createToastWindowFn = func(path string) {
-		applog.Info("toast window", "path", path)
-		win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-			Title:                      "",
-			Width:                      360,
-			Height:                     80,
-			MinWidth:                   360,
-			MinHeight:                  80,
-			MaxWidth:                   360,
-			MaxHeight:                  80,
-			Frameless:                  true,
-			AlwaysOnTop:                true,
-			DisableResize:              true,
-			Hidden:                     false,
-			IgnoreMouseEvents:          true,
-			BackgroundColour:           application.NewRGB(255, 255, 255),
-			DefaultContextMenuDisabled: true,
-			URL:                        path,
-			Windows: application.WindowsWindow{
-				DisableFramelessWindowDecorations: true,
-				HiddenOnTaskbar:                   true,
-			},
-		})
-
-		// Save the foreground window before toast steals focus, then restore it.
-		application.InvokeSync(func() {
-			hwnd := w32.HWND(win.NativeWindow())
-			if hwnd == 0 {
-				applog.Warn("toast: native window handle is zero")
-				return
-			}
-
-			prevHwnd := w32.GetForegroundWindow()
-
-			// Position at bottom-right of primary screen work area.
-			hMonitor := w32.MonitorFromPoint(0, 0, w32.MONITOR_DEFAULTTOPRIMARY)
-			var mi w32.MONITORINFO
-			mi.CbSize = uint32(unsafe.Sizeof(mi))
-			if !w32.GetMonitorInfo(hMonitor, &mi) {
-				applog.Warn("toast: GetMonitorInfo failed")
-				return
-			}
-
-			workRect := mi.RcWork
-			workW := int(workRect.Right - workRect.Left)
-			workH := int(workRect.Bottom - workRect.Top)
-			dpi := w32.GetDpiForWindow(hwnd)
-			scale := float64(dpi) / 96.0
-			padding := 10
-			win.SetPosition(
-				int(float64(workW)/scale)-360-padding,
-				int(float64(workH)/scale)-80-padding,
-			)
-
-			// Log actual window style for debugging.
-			style := uint32(w32.GetWindowLong(hwnd, w32.GWL_STYLE))
-			applog.Info("toast style", "style", fmt.Sprintf("0x%08X", style))
-
-			// Restore focus so the toast doesn't steal it.
-			if prevHwnd != 0 && prevHwnd != hwnd {
-				w32.SetForegroundWindow(prevHwnd)
-			}
-		})
-
-		// Auto-close after 3 seconds (animation 200ms + 2600ms + 150ms).
-		time.AfterFunc(3*time.Second, func() {
-			win.Close()
-			applog.Info("toast window closed")
-		})
-	}
-
-		createJsonWindowFn = func(path, title string) {
+	createJsonWindowFn = func(path, title string) {
 		applog.Info("secondary window", "title", title)
 		win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Title:                      title,

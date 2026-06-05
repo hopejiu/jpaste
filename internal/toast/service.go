@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"jpaste/internal/events"
+
 	applog "jpaste/internal/log"
 )
 
@@ -15,28 +17,28 @@ type ToastData struct {
 	Message string `json:"message"`
 }
 
-// Service manages toast notifications via a token-store pattern.
-// The Go side stores {title, message} keyed by a random hex token,
-// the window URL is /toast?token=X, and the front-end retrieves
-// the payload via GetToastData(token).
+// Service manages toast notifications via an event-driven pattern.
+// The Go side emits a "toast-notification" event with ToastData payload,
+// and the pre-created toast window's frontend listens for it directly.
+// Tokens are still kept for backward compatibility of the GetToastData binding.
 type Service struct {
-	store     map[string]ToastData
-	mu        sync.RWMutex
-	createWin func(path string)
+	store    map[string]ToastData
+	mu       sync.RWMutex
+	emitFunc func(name string, data any)
 }
 
 // NewService creates a new toast service.
-// createWin is a callback that opens a Wails window at a given URL path.
-func NewService(createWin func(path string)) *Service {
+// emitFunc is a callback that emits an app-level event (e.g. app.Event.Emit).
+func NewService(emitFunc func(name string, data any)) *Service {
 	return &Service{
-		store:     make(map[string]ToastData),
-		createWin: createWin,
+		store:    make(map[string]ToastData),
+		emitFunc: emitFunc,
 	}
 }
 
-// ShowToast stores the toast data and opens a toast window.
-// The window auto-closes after 3 seconds; the token is cleaned up
-// after a 10-second fallback timer.
+// ShowToast stores the toast data and emits a "toast-notification" event
+// to the pre-created toast window. The window's Go-side listener handles
+// positioning, showing, and auto-hiding.
 func (s *Service) ShowToast(title, message string) {
 	token := generateToken()
 
@@ -52,11 +54,11 @@ func (s *Service) ShowToast(title, message string) {
 	})
 
 	applog.Info("toast: show", "title", title, "token", token)
-	s.createWin("/toast?token=" + token)
+	s.emitFunc(events.ToastNotification, ToastData{Title: title, Message: message})
 }
 
 // GetToastData retrieves toast data by token.
-// Exposed as a Wails binding for the front-end to call.
+// Exposed as a Wails binding for the front-end to call (legacy path).
 func (s *Service) GetToastData(token string) *ToastData {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -70,7 +72,6 @@ func (s *Service) GetToastData(token string) *ToastData {
 func generateToken() string {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		// Fallback: not cryptographically secure but acceptable for UI tokens.
 		b = []byte("fallback00000000")
 	}
 	return hex.EncodeToString(b)

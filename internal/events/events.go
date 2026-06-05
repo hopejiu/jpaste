@@ -34,3 +34,8 @@ const (
 const (
 	FrontendLog = "frontend-log"
 )
+
+// Toast notifications (pre-created window, event-driven)
+const (
+	ToastNotification = "toast-notification"
+)

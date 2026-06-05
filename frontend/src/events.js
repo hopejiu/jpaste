@@ -20,4 +20,7 @@ export const EVENTS = {
 
   // Frontend log relay
   FRONTEND_LOG: 'frontend-log',
+
+  // Toast notifications
+  TOAST_NOTIFICATION: 'toast-notification',
 }
