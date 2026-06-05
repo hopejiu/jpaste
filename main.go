@@ -628,6 +628,20 @@ func runCleanup(histSvc *history.Service, sett *settings.Service) {
 	} else if n > 0 {
 		applog.Info("cleaned up old entries", "count", n)
 	}
+
+	// Clean up orphaned temp files from previous sessions.
+	tmpDir := filepath.Join(os.Getenv("TEMP"), "jPaste")
+	if entries, err := os.ReadDir(tmpDir); err == nil {
+		cleaned := 0
+		for _, e := range entries {
+			if err := os.RemoveAll(filepath.Join(tmpDir, e.Name())); err == nil {
+				cleaned++
+			}
+		}
+		if cleaned > 0 {
+			applog.Info("cleaned up temp dir", "dir", tmpDir, "count", cleaned)
+		}
+	}
 }
 
 func setupAutostart(app *application.App, sett *settings.Service) {
