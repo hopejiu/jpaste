@@ -1,279 +1,180 @@
 # Design System Master File
 
-> **LOGIC:** When building a specific page, first check `design-system/jpaste/pages/[page-name].md`.
+> **LOGIC:** When building a specific page, first check `design-system/pages/[page-name].md`.
 > If that file exists, its rules **override** this Master file.
 > If not, strictly follow the rules below.
 
 ---
 
 **Project:** jPaste
-**Generated:** 2026-06-02
-**Category:** Desktop Utility (Clipboard Manager)
+**Updated:** 2026-06-05
+**Category:** Productivity Tool (Clipboard Manager)
 
 ---
 
-## Global Rules
+## Architecture: Multi-Theme System
 
-### Color Palette
+jPaste supports **3 themes** switchable from Settings → 主题. Themes are stored in Go `settings.json` as `theme` field (`"a"` / `"b"` / `"c"`), applied via CSS class `theme-*` on the root `<div>`.
+
+| ID | Name | Mood | Primary | Background | Surface |
+|----|------|------|---------|------------|---------|
+| `a` | 冷调极简 | 清爽、专注 | `#0D9488` 青碧 | `#F1F3F5` | `#FFFFFF` |
+| `b` | 暖调高效 | 经典、生产力 | `#6366F1` Indigo | `#F0F2F5` | `#FFFFFF` |
+| `c` | 深色沉浸 | OLED 黑底白字 | `#5E6AD2` 紫蓝 | `#000000` | `#161616` |
+
+### Switching Flow
+
+1. User selects theme in Settings
+2. Go backend saves new `theme` to `settings.json`
+3. Frontend calls `window.location.reload()`
+4. On reload, `AppContent` reads `settings.theme`
+5. Sets `document.documentElement.className = "theme-{a|b|c}"` — 使 CSS 变量级联到 `<body>`
+6. AppContent div 同时设置 `className="{animClass} theme-{a|b|c}"`
+7. All components reference CSS `var(--color-*)` — themes swap variable values
+
+### Layer Architecture (三层面系统)
+
+```
+<body>               --color-background (最深)
+  └─ #root
+     └─ AppContent   --color-surface (中层, 主内容区)
+        ├─ Header    --color-surface (surface 层)
+        ├─ TabBar    --color-background (沉回背景层, 视觉分隔)
+        ├─ List      --color-surface (内容区)
+        ├─ Footer    --color-background (沉回背景层)
+        └─ Modal     --color-elevated (浮动最高层)
+```
+
+### CSS Variables
+
+Each theme defines the complete set:
+
+```
+--color-primary            --color-primary-hover
+--color-accent             --color-background
+--color-surface            --color-surface-hover
+--color-elevated           --color-foreground
+--color-muted              --color-border
+--color-destructive        --color-ring
+--color-favorite           --color-success
+--color-badge-file         --color-badge-file-bg
+--color-image-bg
+--color-primary-alpha-04   --color-primary-alpha-06
+--color-primary-alpha-08   --color-primary-alpha-12
+--color-primary-alpha-15
+```
+
+Alpha variants use `color-mix(in srgb, var(--color-primary) N%, transparent)` for theme-adaptive transparency.
+
+### Shared Tokens (same across all themes)
+
+```
+--radius-sm: 6px     --radius-md: 8px     --radius-lg: 12px
+--space-1..8         4/8/12/16/24/32px
+--font-size-xs..2xl  12/13/14/16/18/24px
+--transition-fast    150ms ease
+--transition-normal  200ms ease
+```
+
+---
+
+## Color Palettes
+
+### Theme A: 冷调极简
+
+| Role | Hex | CSS Variable |
+|------|-----|--------------|
+| Primary | `#0D9488` | `--color-primary` |
+| Accent | `#EA580C` | `--color-accent` |
+| Background | `#F1F3F5` | `--color-background` |
+| Surface | `#FFFFFF` | `--color-surface` |
+| Elevated | `#FFFFFF` | `--color-elevated` |
+| Foreground | `#1A1D23` | `--color-foreground` |
+| Muted | `#868E96` | `--color-muted` |
+| Favorite | `#F59E0B` | `--color-favorite` |
+| Success | `#10B981` | `--color-success` |
+
+**设计思路：** 中性暖灰背景 + 白色卡片 + 青碧主色点缀。`--color-background` 与 `--color-surface` 有明显层级差，页面不再「飘白」。
+
+### Theme B: 暖调高效
 
 | Role | Hex | CSS Variable |
 |------|-----|--------------|
 | Primary | `#6366F1` | `--color-primary` |
-| On Primary | `#FFFFFF` | `--color-on-primary` |
-| Secondary | `#4F46E5` | `--color-secondary` |
-| Accent/CTA | `#06B6D4` | `--color-accent` |
-| Background | `#F8FAFC` | `--color-background` |
+| Accent | `#F59E0B` | `--color-accent` |
+| Background | `#F0F2F5` | `--color-background` |
 | Surface | `#FFFFFF` | `--color-surface` |
-| Surface Hover | `#F1F5F9` | `--color-surface-hover` |
-| Foreground | `#0F172A` | `--color-foreground` |
-| Muted | `#64748B` | `--color-muted` |
-| Border | `rgba(0,0,0,0.08)` | `--color-border` |
-| Destructive | `#EF4444` | `--color-destructive` |
-| Ring | `rgba(99,102,241,0.24)` | `--color-ring` |
+| Elevated | `#FFFFFF` | `--color-elevated` |
+| Foreground | `#1E2024` | `--color-foreground` |
+| Muted | `#7C828E` | `--color-muted` |
+| Favorite | `#F59E0B` | `--color-favorite` |
+| Success | `#10B981` | `--color-success` |
 
-**Color Notes:** Modern indigo primary + cyan accent. Light mode. Clean, airy, professional.
+**设计思路：** 同样三层结构。Indigo 主色不变，背景改为中性灰，减少「空泛感」。
 
-### Typography
+### Theme C: 深色沉浸 (OLED 黑底白字)
 
-- **Font Family:** Inter (all weights)
-- **Weights:** 300 Light, 400 Regular, 500 Medium, 600 Semibold, 700 Bold
-- **Scale:** 12 / 13 / 14 / 16 / 18 / 20 / 24 / 32
-- **Mood:** Modern, clean, precision, professional, high-end utility
+| Role | Hex | CSS Variable |
+|------|-----|--------------|
+| Primary | `#5E6AD2` | `--color-primary` |
+| Accent | `#7C6FFF` | `--color-accent` |
+| Background | `#000000` | `--color-background` |
+| Surface | `#161616` | `--color-surface` |
+| Elevated | `#1E1E1E` | `--color-elevated` |
+| Foreground | `#FFFFFF` | `--color-foreground` |
+| Muted | `#8C8C8C` | `--color-muted` |
+| Favorite | `#F59E0B` | `--color-favorite` |
+| Success | `#34D399` | `--color-success` |
 
-```css
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-```
-
-### Spacing Variables
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--space-1` | `4px` | Tight icon gaps |
-| `--space-2` | `8px` | Inline spacing, small gaps |
-| `--space-3` | `12px` | List item inner padding |
-| `--space-4` | `16px` | Standard padding |
-| `--space-6` | `24px` | Section padding |
-| `--space-8` | `32px` | Page margins |
-
-All spacing follows 4px baseline grid.
-
-### Border Radius
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--radius-sm` | `6px` | Tags, badges |
-| `--radius-md` | `8px` | Inputs, buttons, list items |
-| `--radius-lg` | `12px` | Cards, modals |
-| `--radius-full` | `9999px` | Pills, avatars |
-
-### Animation
-
-| Scenario | Duration | Easing |
-|----------|----------|--------|
-| Window show (fade+scale) | 250ms | `cubic-bezier(0.16, 1, 0.3, 1)` (spring-out) |
-| Window hide (fade out) | 150ms | `ease-in` |
-| List item hover | 150ms | `ease` |
-| Filter results (instant) | 0ms | - |
-| Toast enter | 200ms | `ease-out` |
-| Toast exit | 150ms | `ease-in` |
-| Setting toggle | 150ms | `ease` |
-| Button press | 100ms | `ease` |
+**设计思路：** 纯黑背景 (`#000000`) 利用 OLED 像素关闭特性，深灰表面层叠构建层次感，纯白文字保证 13.3:1 极致可读性。`--color-surface-hover: #222222` 确保交互反馈可见。
 
 ---
 
-## Component Specs
+## Typography
 
-### Search Input (Spotlight-style)
+- **Font:** Inter (300–700 variable weight)
+- **Body size:** 14px (--font-size-base)
+- **Line-height:** 1.5
+- **CSS:** `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');`
 
-```css
-.search-input {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 12px 16px;
-  font-size: 16px;
-  color: var(--color-foreground);
-  caret-color: var(--color-primary);
-  outline: none;
-  transition: border-color 200ms ease, box-shadow 200ms ease;
-}
-.search-input:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
-}
-.search-input::placeholder {
-  color: var(--color-muted);
-}
-```
+---
 
-### Clipboard List Item
+## Style Guidelines
 
-```css
-.clip-item {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background 150ms ease;
-}
-.clip-item:hover {
-  background: var(--color-surface-hover);
-}
-.clip-item:active {
-  transform: scale(0.985);
-}
-.clip-shortcut {
-  min-width: 28px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(99, 102, 241, 0.15);
-  color: var(--color-primary);
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-}
-.clip-content {
-  flex: 1;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--color-foreground);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-}
-.clip-time {
-  font-size: 12px;
-  color: var(--color-muted);
-  white-space: nowrap;
-}
-```
+**Base Style:** Flat Design with Material Layering
 
-### Buttons
+- Three-tier surface hierarchy: `background → surface → elevated`
+  - `--color-background`: deepest layer, page base
+  - `--color-surface`: cards, list items, in-page content
+  - `--color-elevated`: floating elements (modals, dropdowns, context menus)
+- Light themes: button hover → `filter: brightness(0.97)`
+- Dark theme C: button hover → `filter: brightness(1.2)` (lighten on dark)
+- State changes via color/opacity (150ms ease)
+- All interactive elements have `cursor: pointer`
+- Focus states visible via `--color-ring` outline
+- SVG icons only (Lucide React)
 
-```css
-.btn-primary {
-  background: var(--color-primary);
-  color: white;
-  padding: 8px 20px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 150ms ease;
-  cursor: pointer;
-  border: none;
-}
-.btn-primary:hover { opacity: 0.9; }
-.btn-primary:active { transform: scale(0.97); }
+---
 
-.btn-ghost {
-  background: transparent;
-  color: var(--color-foreground);
-  padding: 8px 12px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  transition: background 150ms ease;
-  cursor: pointer;
-  border: none;
-}
-.btn-ghost:hover { background: var(--color-surface-hover); }
+## Sub-window Theming
 
-.btn-icon {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  color: var(--color-muted);
-  cursor: pointer;
-  transition: all 150ms ease;
-  border: none;
-  background: transparent;
-}
-.btn-icon:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-foreground);
-}
-```
+| Window | Theme Mechanism |
+|--------|----------------|
+| Main window | `className="theme-*"` on root `<div>` |
+| Toast window | Uses CSS variables, reloads on next show |
+| Image viewer | Uses `--color-image-bg` |
+| JSON viewer | Uses `--color-background` |
 
-### Settings Controls
-
-```css
-.settings-group {
-  border-bottom: 1px solid var(--color-border);
-  padding: var(--space-4) 0;
-}
-.settings-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-3) 0;
-}
-.settings-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-foreground);
-}
-.settings-desc {
-  font-size: 12px;
-  color: var(--color-muted);
-  margin-top: 2px;
-}
-
-/* Toggle Switch */
-.toggle {
-  width: 44px;
-  height: 24px;
-  border-radius: 9999px;
-  background: var(--color-muted);
-  transition: background 150ms ease;
-  cursor: pointer;
-  position: relative;
-}
-.toggle.active {
-  background: var(--color-primary);
-}
-.toggle::after {
-  content: '';
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: white;
-  top: 3px;
-  left: 3px;
-  transition: transform 150ms ease;
-}
-.toggle.active::after {
-  transform: translateX(20px);
-}
-```
+Sub-windows are separate Wails windows. Theme is applied via CSS variables inherited from `public/style.css`. No cross-window event propagation needed — theme change triggers full `location.reload()`.
 
 ---
 
 ## Anti-Patterns (Do NOT Use)
 
-- ❌ Emojis as icons — use Lucide Icons exclusively
-- ❌ Missing cursor:pointer on clickable elements
-- ❌ Layout-shifting hovers that push content
-- ❌ Low contrast text (< 4.5:1)
-- ❌ Instant state changes without transitions (150-300ms)
-- ❌ Invisible focus states — always show focus ring
-- ❌ Animate width/height — use transform/opacity only
-
----
-
-## Pre-Delivery Checklist
-
-- [ ] No emojis as icons (Lucide Icons, stroke-width 1.5)
-- [ ] All hex colors mapped to CSS custom properties
-- [ ] Focus states visible on all interactive elements
-- [ ] `prefers-reduced-motion` respected (disable animations)
-- [ ] Touch targets ≥ 36px for all clickable elements
-- [ ] Hover states with smooth transitions (150-300ms)
-- [ ] No horizontal overflow
+- ❌ Hardcoded hex/rgba colors in JSX — always use `var(--color-*)`
+- ❌ Emojis as icons — use SVG (Lucide React)
+- ❌ Missing `cursor:pointer` on clickable elements
+- ❌ Layout-shifting hovers (avoid scale transforms that move content)
+- ❌ Low contrast text (maintain 4.5:1 minimum)
+- ❌ Instant state changes (always use 150-300ms transitions)
+- ❌ Invisible focus states

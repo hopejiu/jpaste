@@ -48,7 +48,7 @@ const styles = {
     animation: 'fadeIn 150ms ease-out',
   },
   modal: {
-    background: 'var(--color-bg, #f8fafc)',
+    background: 'var(--color-elevated)',
     borderRadius: 'var(--radius-lg, 12px)',
     boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
     width: '90%', maxWidth: '520px', maxHeight: '80vh',

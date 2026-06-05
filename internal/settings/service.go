@@ -20,6 +20,7 @@ type Data struct {
 	ActionConfig   json.RawMessage `json:"action_config,omitempty"`  // frontend-managed, Go pass-through
 	SortField      string          `json:"sort_field"`               // "updated_at" / "content_length"
 	SortOrder      string          `json:"sort_order"`               // "asc" / "desc"
+	Theme          string          `json:"theme"`                    // "a" (冷调极简) / "b" (暖调高效) / "c" (深色沉浸)
 }
 
 // Service reads and writes settings from a JSON file.
@@ -46,6 +47,7 @@ func NewService(basePath string) *Service {
 			ActionConfig:   json.RawMessage("{}"),
 			SortField:      "updated_at",
 			SortOrder:      "desc",
+			Theme:          "a",
 		},
 	}
 }
@@ -76,6 +78,7 @@ func Defaults() Data {
 		PasteOrder:     "normal",
 		SortField:      "updated_at",
 		SortOrder:      "desc",
+		Theme:          "a",
 	}
 }
 
@@ -158,5 +161,6 @@ func changedExceptHotkey(a, b Data) bool {
 		a.NotifyEnabled != b.NotifyEnabled ||
 		a.PasteOrder != b.PasteOrder ||
 		a.SortField != b.SortField ||
-		a.SortOrder != b.SortOrder
+		a.SortOrder != b.SortOrder ||
+		a.Theme != b.Theme
 }

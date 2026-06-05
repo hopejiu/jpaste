@@ -3,6 +3,7 @@ export const styles = {
   header: {
     display: 'flex', alignItems: 'center', padding: '12px 16px', gap: '8px',
     borderBottom: '1px solid var(--color-border)', flexShrink: 0,
+    background: 'var(--color-surface)',
   },
   searchBox: { flex: 1, position: 'relative', display: 'flex', alignItems: 'center' },
   searchIcon: { position: 'absolute', left: '12px', color: 'var(--color-muted)', pointerEvents: 'none' },
@@ -32,11 +33,12 @@ export const styles = {
     flexShrink: 0, transition: 'all var(--transition-fast)',
   },
   regexBtnActive: {
-    color: 'var(--color-primary)', background: 'rgba(99,102,241,0.12)',
+    color: 'var(--color-primary)', background: 'var(--color-primary-alpha-12)',
   },
   tabBar: {
     display: 'flex', gap: '4px', padding: '8px 16px',
     borderBottom: '1px solid var(--color-border)', flexShrink: 0, overflowX: 'auto',
+    background: 'var(--color-background)',
   },
   tab: {
     padding: '5px 14px', fontSize: 'var(--font-size-xs)', fontWeight: 500,
@@ -46,7 +48,7 @@ export const styles = {
     transition: 'all var(--transition-fast)', outline: 'none',
   },
   tabActive: {
-    background: 'rgba(99,102,241,0.12)', color: 'var(--color-primary)',
+    background: 'var(--color-primary-alpha-12)', color: 'var(--color-primary)',
   },
   list: { flex: 1, overflowY: 'auto', padding: '4px 0' },
   loading: {
@@ -73,7 +75,7 @@ export const styles = {
   itemFocused: { background: 'var(--color-surface-hover)' },
   shortcut: {
     minWidth: '24px', height: '22px', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', background: 'rgba(99,102,241,0.15)',
+    justifyContent: 'center', background: 'var(--color-primary-alpha-15)',
     color: 'var(--color-primary)', borderRadius: '4px',
     fontSize: 'var(--font-size-xs)', fontWeight: 600, marginTop: '1px', flexShrink: 0,
   },
@@ -101,7 +103,7 @@ export const styles = {
   fileBadge: {
     display: 'inline-flex', alignItems: 'center', gap: '3px',
     marginLeft: '6px', padding: '1px 6px',
-    background: 'rgba(245,158,11,0.12)', color: '#D97706',
+    background: 'var(--color-badge-file-bg)', color: 'var(--color-badge-file)',
     borderRadius: '999px', fontSize: '10px', fontWeight: 600,
     verticalAlign: 'middle', whiteSpace: 'nowrap',
   },
@@ -109,10 +111,11 @@ export const styles = {
     borderTop: '1px solid var(--color-border)', padding: '8px 16px',
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     flexShrink: 0, gap: '8px',
+    background: 'var(--color-background)',
   },
   footerText: { fontSize: 'var(--font-size-xs)', color: 'var(--color-muted)' },
   ctxOverlay: {
-    position: 'fixed', minWidth: '160px', background: 'var(--color-surface)',
+    position: 'fixed', minWidth: '160px', background: 'var(--color-elevated)',
     border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
     boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '4px', zIndex: 2000,
     animation: 'slideDown 120ms ease-out',
@@ -132,7 +135,7 @@ export const styles = {
   itemImagePlaceholder: {
     display: 'flex', alignItems: 'center', gap: '8px',
     padding: '8px 12px', borderRadius: 'var(--radius-md)',
-    background: 'rgba(99,102,241,0.06)', fontSize: 'var(--font-size-sm)',
+    background: 'var(--color-primary-alpha-06)', fontSize: 'var(--font-size-sm)',
     color: 'var(--color-muted)',
   },
   itemImageLabel: { fontWeight: 500 },
@@ -140,7 +143,7 @@ export const styles = {
   thumbImg: {
     maxWidth: '100%', maxHeight: '160px',
     borderRadius: 'var(--radius-sm)', objectFit: 'contain',
-    display: 'block', background: 'rgba(99,102,241,0.04)',
+    display: 'block', background: 'var(--color-primary-alpha-04)',
   },
   // Inline thumbnail for mixed text+image entries.
   thumbInline: {
@@ -159,7 +162,7 @@ export const styles = {
     color: 'var(--color-muted)', cursor: 'pointer', borderRadius: '4px',
     transition: 'all var(--transition-fast)', flexShrink: 0,
   },
-  favBtnActive: { color: '#F59E0B' },
+  favBtnActive: { color: 'var(--color-favorite)' },
   // Source application label.
   sourceApp: {
     fontSize: '11px', color: 'var(--color-muted)', opacity: 0.8,
@@ -169,7 +172,7 @@ export const styles = {
   // Checkmark animation overlay.
   checkmark: {
     position: 'absolute', top: '50%', right: '12px',
-    transform: 'translateY(-50%)', color: '#10B981',
+    transform: 'translateY(-50%)',     color: 'var(--color-success)',
     animation: 'fadeScaleIn 250ms ease-out',
     pointerEvents: 'none',
   },

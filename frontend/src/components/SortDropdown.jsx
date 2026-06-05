@@ -36,7 +36,7 @@ export default function SortDropdown({ style }) {
       {open && (
         <div style={{
           position: 'absolute', right: 0, top: '100%', marginTop: '4px',
-          minWidth: '120px', background: 'var(--color-surface)',
+          minWidth: '120px', background: 'var(--color-elevated)',
           border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
           boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '4px', zIndex: 2000,
         }}>
@@ -50,7 +50,7 @@ export default function SortDropdown({ style }) {
                   display: 'block', width: '100%', padding: '6px 12px',
                   fontSize: 'var(--font-size-sm)', textAlign: 'left',
                   border: 'none', borderRadius: 'var(--radius-sm)',
-                  background: active ? 'rgba(99,102,241,0.12)' : 'transparent',
+                  background: active ? 'var(--color-primary-alpha-12)' : 'transparent',
                   color: active ? 'var(--color-primary)' : 'var(--color-foreground)',
                   cursor: 'pointer', fontFamily: 'inherit',
                   transition: 'background var(--transition-fast)',

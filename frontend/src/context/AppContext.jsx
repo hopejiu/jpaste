@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS = {
   notify_enabled: false,
   paste_order: 'normal',
   action_config: {},
+  theme: 'a',
 }
 
 const DEFAULT_SYNC_STATUS = { status: 'none', error: '' }
@@ -32,7 +33,7 @@ export function AppProvider({ children }) {
     SettingsService.GetSettings()
       .then(s => {
         const actionConfig = { ...defaultConfig(), ...(s.action_config || {}) }
-        setSettings({ ...s, action_config: actionConfig })
+        setSettings({ ...s, theme: s.theme || 'a', action_config: actionConfig })
       })
       .catch(e => log.error('AppContext', e))
   }, [])

@@ -13,10 +13,19 @@ import ToastPage from './pages/ToastPage'
 function AppContent() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { settings } = useApp()
   const [animState, setAnimState] = useState('enter')
   const appRef = useRef(null)
   const lastHideTimeRef = useRef(Date.now())
   const { setSearch } = useClipboard()
+
+  // Apply theme class based on settings
+  const themeClass = `theme-${settings.theme || 'a'}`
+
+  // Sync theme class to <html> so CSS variables cascade to <body> too.
+  useEffect(() => {
+    document.documentElement.className = themeClass
+  }, [themeClass])
 
   // Handle navigate event from Go (system tray).
   useEffect(() => {
@@ -50,8 +59,9 @@ function AppContent() {
   const animClass = animState === 'enter' ? 'app-enter' : 'app-exit'
 
   return (
-    <div ref={appRef} className={animClass} style={{
+    <div ref={appRef} className={`${animClass} ${themeClass}`} style={{
       width: '100%', height: '100vh', display: 'flex', flexDirection: 'column',
+      background: 'var(--color-surface)',
     }}>
       <Routes>
         <Route path="/" element={<MainPage />} />

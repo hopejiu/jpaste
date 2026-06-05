@@ -234,7 +234,7 @@ export default function MainPage() {
                 style={{
                   fontSize: '11px', padding: '1px 6px', borderRadius: '4px',
                   border: '1px solid var(--color-border)',
-                  background: active ? 'rgba(99,102,241,0.12)' : 'transparent',
+                  background: active ? 'var(--color-primary-alpha-12)' : 'transparent',
                   color: active ? 'var(--color-primary)' : 'var(--color-muted)',
                   cursor: 'pointer', fontFamily: 'inherit',
                   transition: 'all var(--transition-fast)',

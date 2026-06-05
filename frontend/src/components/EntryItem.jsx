@@ -141,7 +141,7 @@ export default function EntryItem({
               onClick={(e) => { e.stopPropagation(); onToggleFavorite(entry.id, !entry.is_favorite) }}
               title={entry.is_favorite ? '取消收藏' : '收藏'}
             >
-              <Star size={14} fill={entry.is_favorite ? '#F59E0B' : 'none'} />
+              <Star size={14} fill={entry.is_favorite ? 'var(--color-favorite)' : 'none'} />
             </button>
           )}
           <button
@@ -163,7 +163,7 @@ export default function EntryItem({
 
       {animatingId === entry.id && (
         <div style={styles.checkmark}>
-          <CheckCircle size={20} fill="#10B981" color="#fff" />
+          <CheckCircle size={20} fill="var(--color-success)" color="#fff" />
         </div>
       )}
     </div>

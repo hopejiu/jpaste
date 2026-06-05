@@ -23,3 +23,4 @@ frontend/bindings/
 build_err.txt
 gen_err.txt
 input.txt
+*.exe

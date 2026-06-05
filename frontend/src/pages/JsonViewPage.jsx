@@ -161,7 +161,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: '#F8FAFC',
+    background: 'var(--color-background)',
     flexDirection: 'column',
     zIndex: 1,
   },

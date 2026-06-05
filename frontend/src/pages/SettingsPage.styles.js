@@ -1,5 +1,5 @@
 export const styles = {
-  container: { display: 'flex', flexDirection: 'column', height: '100vh', outline: 'none', animation: 'slideDown 200ms ease-out' },
+  container: { display: 'flex', flexDirection: 'column', height: '100vh', outline: 'none', animation: 'slideDown 200ms ease-out', background: 'var(--color-surface)' },
   header: { display: 'flex', alignItems: 'center', padding: '12px 16px', gap: '12px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 },
   backBtn: { width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--color-foreground)', cursor: 'pointer', borderRadius: 'var(--radius-md)', transition: 'background var(--transition-fast)' },
   title: { fontSize: 'var(--font-size-xl)', fontWeight: 600, flex: 1 },
@@ -19,7 +19,7 @@ export const styles = {
   },
   modChipActive: {
     borderColor: 'var(--color-primary)', color: 'var(--color-primary)',
-    background: 'rgba(99,102,241,0.08)',
+    background: 'var(--color-primary-alpha-08)',
   },
   keyInput: {
     width: '80px', height: '36px', marginTop: '4px', textAlign: 'center',
@@ -47,8 +47,28 @@ export const styles = {
   },
   radioGroup: { display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '12px' },
   radioLabel: { display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', cursor: 'pointer', fontSize: 'var(--font-size-sm)', transition: 'all var(--transition-fast)' },
-  radioActive: { borderColor: 'var(--color-primary)', background: 'rgba(99,102,241,0.08)' },
+  radioActive: { borderColor: 'var(--color-primary)', background: 'var(--color-primary-alpha-08)' },
   radio: { accentColor: 'var(--color-primary)' },
+
+  // Theme selector
+  themeGrid: { display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' },
+  themeCard: {
+    display: 'flex', alignItems: 'center', gap: '12px',
+    padding: '12px 14px', borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--color-border)',
+    background: 'var(--color-surface)',
+    cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+    transition: 'all var(--transition-fast)',
+  },
+  themeCardActive: {
+    borderColor: 'var(--color-primary)',
+    background: 'var(--color-primary-alpha-06)',
+  },
+  themeSwatch: { display: 'flex', gap: '4px', flexShrink: 0 },
+  themeColorDot: {
+    width: '20px', height: '20px', borderRadius: '50%',
+    border: '2px solid var(--color-border)',
+  },
 
   actionList: { display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '12px' },
   actionItem: {

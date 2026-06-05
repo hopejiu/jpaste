@@ -12,6 +12,12 @@ import { styles } from './SettingsPage.styles'
 
 const MODS = ['Ctrl', 'Alt', 'Shift', 'Win']
 
+const THEMES = [
+  { id: 'a', label: '冷调极简', desc: '青碧主色 · 清爽高效', colors: ['#0D9488', '#F0FDFA', '#FFFFFF'] },
+  { id: 'b', label: '暖调高效', desc: 'Indigo 经典 · 生产力优先', colors: ['#6366F1', '#F8FAFC', '#FFFFFF'] },
+  { id: 'c', label: '深色沉浸', desc: '暗色氛围 · 夜间友好', colors: ['#5E6AD2', '#0F0F1A', '#1A1A2E'] },
+]
+
 function parseHotkey(hotkey) {
   const parts = hotkey.split('+').map(p => p.trim())
   const mods = []
@@ -60,6 +66,10 @@ export default function SettingsPage() {
     await saveSettings(updated)
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
+    // Reload when theme changes so the new theme applies to all windows.
+    if (updates.theme && updates.theme !== settings.theme) {
+      window.location.reload()
+    }
   }
 
   const updateHotkey = useCallback((newMods, newKey) => {
@@ -223,6 +233,67 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* Theme Selector */}
+        <div style={styles.group}>
+          <div style={styles.label}>主题</div>
+          <div style={styles.desc}>切换整体视觉风格（保存后刷新）</div>
+          <div style={styles.themeGrid}>
+            {THEMES.map(t => {
+              const active = (local.theme || 'a') === t.id
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => handleSave({ theme: t.id })}
+                  style={{
+                    ...styles.themeCard,
+                    ...(active ? styles.themeCardActive : {}),
+                  }}
+                >
+                  <div style={styles.themeSwatch}>
+                    {t.colors.map((c, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          ...styles.themeColorDot,
+                          background: c,
+                          border: i === 2 && t.id === 'c' ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      fontSize: 'var(--font-size-sm)',
+                      fontWeight: active ? 600 : 500,
+                      color: 'var(--color-foreground)',
+                      marginBottom: '2px',
+                    }}>
+                      {t.label}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
+                      {t.desc}
+                    </div>
+                  </div>
+                  <div style={{
+                    width: '16px', height: '16px',
+                    borderRadius: '50%',
+                    border: '2px solid var(--color-border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                    ...(active ? { borderColor: 'var(--color-primary)' } : {}),
+                  }}>
+                    {active && <div style={{
+                      width: '8px', height: '8px',
+                      borderRadius: '50%',
+                      background: 'var(--color-primary)',
+                    }} />}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         {/* Toggle Settings */}
         {[
           { key: 'notify_enabled', label: '剪贴板通知', desc: '捕获到新剪贴板内容时显示通知' },
@@ -284,7 +355,7 @@ export default function SettingsPage() {
           zIndex: 3000,
         }} onClick={() => setShowClearModal(false)}>
           <div style={{
-            background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)',
+            background: 'var(--color-elevated)', borderRadius: 'var(--radius-lg)',
             padding: '24px', width: '340px', maxWidth: '90vw',
             boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
           }} onClick={e => e.stopPropagation()}>

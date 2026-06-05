@@ -1,20 +1,88 @@
-/* ===== Design Tokens ===== */
-:root {
+/* ===== Design Tokens — Theme A: 冷调极简 ===== */
+:root,
+.theme-a {
+  --color-primary: #0D9488;
+  --color-primary-hover: #0F766E;
+  --color-accent: #EA580C;
+  --color-background: #F1F3F5;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #E8ECF0;
+  --color-elevated: #FFFFFF;
+  --color-foreground: #1A1D23;
+  --color-muted: #868E96;
+  --color-border: rgba(0, 0, 0, 0.07);
+  --color-destructive: #DC2626;
+  --color-ring: rgba(13, 148, 136, 0.3);
+  --color-favorite: #F59E0B;
+  --color-success: #10B981;
+  --color-badge-file: #D97706;
+  --color-badge-file-bg: rgba(217, 119, 6, 0.12);
+  --color-image-bg: #1a1a2e;
+  --color-primary-alpha-04: color-mix(in srgb, var(--color-primary) 4%, transparent);
+  --color-primary-alpha-06: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  --color-primary-alpha-08: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  --color-primary-alpha-12: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  --color-primary-alpha-15: color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+
+/* ===== Theme B: 暖调高效 ===== */
+.theme-b {
   --color-primary: #6366F1;
   --color-primary-hover: #4F46E5;
-  --color-accent: #06B6D4;
-  --color-background: #F8FAFC;
+  --color-accent: #F59E0B;
+  --color-background: #F0F2F5;
   --color-surface: #FFFFFF;
-  --color-surface-hover: #F1F5F9;
-  --color-foreground: #0F172A;
-  --color-muted: #64748B;
-  --color-border: rgba(0, 0, 0, 0.08);
+  --color-surface-hover: #E4E7ED;
+  --color-elevated: #FFFFFF;
+  --color-foreground: #1E2024;
+  --color-muted: #7C828E;
+  --color-border: rgba(0, 0, 0, 0.07);
   --color-destructive: #EF4444;
-  --color-ring: rgba(99, 102, 241, 0.24);
+  --color-ring: rgba(99, 102, 241, 0.28);
+  --color-favorite: #F59E0B;
+  --color-success: #10B981;
+  --color-badge-file: #D97706;
+  --color-badge-file-bg: rgba(217, 119, 6, 0.12);
+  --color-image-bg: #1a1a2e;
+  --color-primary-alpha-04: color-mix(in srgb, var(--color-primary) 4%, transparent);
+  --color-primary-alpha-06: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  --color-primary-alpha-08: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  --color-primary-alpha-12: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  --color-primary-alpha-15: color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
 
+/* ===== Theme C: 深色沉浸 (OLED 黑底白字) ===== */
+.theme-c {
+  --color-primary: #5E6AD2;
+  --color-primary-hover: #6B77E0;
+  --color-accent: #7C6FFF;
+  --color-background: #000000;
+  --color-surface: #161616;
+  --color-surface-hover: #222222;
+  --color-elevated: #1E1E1E;
+  --color-foreground: #FFFFFF;
+  --color-muted: #8C8C8C;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-destructive: #EF4444;
+  --color-ring: rgba(94, 106, 210, 0.5);
+  --color-favorite: #F59E0B;
+  --color-success: #34D399;
+  --color-badge-file: #FBBF24;
+  --color-badge-file-bg: rgba(251, 191, 36, 0.15);
+  --color-image-bg: #000000;
+  --color-primary-alpha-04: color-mix(in srgb, var(--color-primary) 4%, transparent);
+  --color-primary-alpha-06: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  --color-primary-alpha-08: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  --color-primary-alpha-12: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  --color-primary-alpha-15: color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+
+/* ===== Shared Theme Tokens ===== */
+:root {
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --radius-full: 9999px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -152,6 +220,9 @@ body {
 /* ===== Hover States ===== */
 button:hover {
   filter: brightness(0.97);
+}
+.theme-c button:hover {
+  filter: brightness(1.2);
 }
 
 /* ===== Toggle Switch ===== */
