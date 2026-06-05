@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { useEffect, useRef, useCallback } from 'react'
+import { Routes, Route, useNavigate } from 'react-router-dom'
 import { Events } from '@wailsio/runtime'
 import { ClipboardProvider, useClipboard } from './context/ClipboardContext'
 import { AppProvider, useApp } from './context/AppContext'
@@ -12,10 +12,7 @@ import ToastPage from './pages/ToastPage'
 
 function AppContent() {
   const navigate = useNavigate()
-  const location = useLocation()
   const { settings } = useApp()
-  const [animState, setAnimState] = useState('enter')
-  const appRef = useRef(null)
   const lastHideTimeRef = useRef(Date.now())
   const { setSearch } = useClipboard()
 
@@ -36,30 +33,21 @@ function AppContent() {
     return unsub
   }, [navigate])
 
-  // Window show/hide: clear search after 30s absence.
+  // Window show: clear search after 30s absence.
   useEffect(() => {
     const unsubShow = Events.On(EVENTS.WINDOW_SHOWN, () => {
-      setAnimState('enter')
       if (Date.now() - lastHideTimeRef.current >= 30000) {
         setSearch('')
       }
     })
     const unsubHide = Events.On(EVENTS.WINDOW_HIDING, () => {
-      setAnimState('exit')
       lastHideTimeRef.current = Date.now()
     })
     return () => { unsubShow(); unsubHide() }
   }, [setSearch])
 
-  // Listen for route changes to trigger enter animation.
-  useEffect(() => {
-    setAnimState('enter')
-  }, [location.pathname])
-
-  const animClass = animState === 'enter' ? 'app-enter' : 'app-exit'
-
   return (
-    <div ref={appRef} className={`${animClass} ${themeClass}`} style={{
+    <div className={themeClass} style={{
       width: '100%', height: '100vh', display: 'flex', flexDirection: 'column',
       background: 'var(--color-surface)',
     }}>

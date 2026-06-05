@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -65,6 +66,7 @@ func main() {
 		return
 	}
 	defer releaseLock()
+	cleanupOrphanedWV2()
 	if err := os.MkdirAll(appData, 0700); err != nil {
 		applog.Error("create app data dir", "error", err)
 		os.Exit(1)
@@ -461,9 +463,8 @@ func main() {
 		if win.IsVisible() {
 			win.EmitEvent(events.WindowHiding, nil)
 		}
-		time.Sleep(200 * time.Millisecond)
 		win.Hide()
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond) // wait for WebView2 to tear down before Paste()
 		filoStack.SetSelfPaste()
 		clipboard.Paste()
 	}
@@ -631,13 +632,15 @@ func hideWindow(win application.Window) {
 		applog.Info("hideWindow: win is nil")
 		return
 	}
-	if !win.IsVisible() {
-		applog.Info("hideWindow: already hidden")
-		return
-	}
+	// Note: we do NOT check win.IsVisible() here — Wails' internal visibility
+	// state can be stale during async window operations. Always attempt Hide();
+	// hiding an already-hidden window is a safe no-op.
 	applog.Info("hideWindow: hiding")
 	win.EmitEvent(events.WindowHiding, nil)
-	time.AfterFunc(200*time.Millisecond, func() { win.Hide() })
+	// Move offscreen BEFORE hiding to prevent the WebView2 teardown flash
+	// (transparent/semi-transparent frame that Windows shows momentarily).
+	win.SetPosition(-9999, -9999)
+	win.Hide()
 }
 
 func must[T any](val T, err error) T {
@@ -653,6 +656,55 @@ func previewText(s string) string {
 		return s[:80] + "..."
 	}
 	return s
+}
+
+// cleanupOrphanedWV2 kills orphaned msedgewebview2 processes — WebView2 child
+// processes whose parent (previous jPaste instance) no longer exists.
+func cleanupOrphanedWV2() {
+	snapshot, err := syscall.CreateToolhelp32Snapshot(syscall.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return
+	}
+	defer syscall.CloseHandle(snapshot)
+
+	// Build: alive PID set, and process info map.
+	alive := make(map[uint32]bool)
+	type procInfo struct {
+		name     string
+		parentPid uint32
+	}
+	info := make(map[uint32]procInfo)
+
+	var pe syscall.ProcessEntry32
+	pe.Size = uint32(unsafe.Sizeof(pe))
+	for ok := syscall.Process32First(snapshot, &pe); ok == nil; ok = syscall.Process32Next(snapshot, &pe) {
+		pid := pe.ProcessID
+		name := syscall.UTF16ToString(pe.ExeFile[:])
+		alive[pid] = true
+		info[pid] = procInfo{name: name, parentPid: pe.ParentProcessID}
+	}
+
+	selfPID := uint32(os.Getpid())
+
+	for pid, pi := range info {
+		if !strings.EqualFold(pi.name, "msedgewebview2.exe") {
+			continue
+		}
+		if pi.parentPid == selfPID {
+			continue // belongs to current instance
+		}
+		if alive[pi.parentPid] {
+			continue // parent still alive — not orphaned
+		}
+		// Orphaned — terminate it.
+		h, err := syscall.OpenProcess(syscall.PROCESS_TERMINATE, false, pid)
+		if err != nil {
+			continue
+		}
+		syscall.TerminateProcess(h, 0)
+		syscall.CloseHandle(h)
+		applog.Info("cleaned orphaned WebView2 process", "pid", pid, "parent", pi.parentPid)
+	}
 }
 
 func acquireLock(appData string) bool {

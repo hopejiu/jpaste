@@ -45,7 +45,7 @@ const styles = {
     position: 'fixed', inset: 0, zIndex: 3000,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     background: 'rgba(0,0,0,0.35)',
-    animation: 'fadeIn 150ms ease-out',
+    animation: 'fadeScaleIn 150ms ease-out',
   },
   modal: {
     background: 'var(--color-elevated)',
