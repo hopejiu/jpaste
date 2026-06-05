@@ -42,12 +42,25 @@ var trayIcon []byte
 
 var lockFilePath string
 var quitting bool
+var pinned bool
 
 // AppHandle bundles app-level dependencies that services need.
 type AppHandle struct{ app *application.App }
 
 func (h *AppHandle) Emit(name string, data any) { h.app.Event.Emit(name, data) }
 func (h *AppHandle) Wire(a *application.App)    { h.app = a }
+
+// Pinner controls whether the main window stays visible on focus loss.
+type Pinner struct{}
+
+func (p *Pinner) SetPinned(val bool) {
+	pinned = val
+	applog.Info("pin", "pinned", val)
+}
+
+func (p *Pinner) IsPinned() bool {
+	return pinned
+}
 
 // clipboardImpl delegates to clipboard package functions.
 type clipboardImpl struct{}
@@ -283,6 +296,7 @@ func main() {
 			application.NewService(imageViewerSvc),
 			application.NewService(toastSvc),
 			application.NewService(filoStack),
+			application.NewService(&Pinner{}),
 		},
 	})
 
@@ -482,6 +496,7 @@ func main() {
 		e.Cancel()
 	})
 	win.OnWindowEvent(wailsEvent.Common.WindowLostFocus, func(e *application.WindowEvent) {
+		if pinned { return }
 		applog.Info("WindowLostFocus: hiding")
 		hideWindow(win)
 	})
@@ -584,17 +599,26 @@ func setupGlobalHotkey(win application.Window, sett *settings.Service) {
 			showWindow(win)
 		}
 	}
-	register := func(keystr string) {
-		applog.Info("setting up global hotkey", "key", keystr)
-		hotkey.UnregisterAll()
-		if err := hotkey.Register(keystr, toggle); err != nil {
-			applog.Warn("register global hotkey", "key", keystr, "error", err)
-		} else {
-			applog.Info("global hotkey registered", "key", keystr)
-		}
+
+	// Initial registration (fire-and-forget at startup).
+	keystr := sett.GetSettings().Hotkey
+	applog.Info("setting up global hotkey", "key", keystr)
+	if err := hotkey.Register(keystr, toggle); err != nil {
+		applog.Warn("register global hotkey", "key", keystr, "error", err)
+	} else {
+		applog.Info("global hotkey registered", "key", keystr)
 	}
-	register(sett.GetSettings().Hotkey)
-	sett.OnHotkeyChange(func(_, newK string) { register(newK) })
+
+	// On change: try new first, swap on success, return error on failure.
+	sett.OnHotkeyChange(func(_, newK string) error {
+		applog.Info("hotkey change requested", "key", newK)
+		if err := hotkey.RegisterAndSwap(newK, toggle); err != nil {
+			applog.Warn("register global hotkey", "key", newK, "error", err)
+			return err
+		}
+		applog.Info("global hotkey registered", "key", newK)
+		return nil
+	})
 }
 
 func runCleanup(histSvc *history.Service, sett *settings.Service) {

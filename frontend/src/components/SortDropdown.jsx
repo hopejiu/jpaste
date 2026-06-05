@@ -5,6 +5,7 @@ import { useClipboard, SORT_OPTIONS } from '../context/ClipboardContext'
 export default function SortDropdown({ style }) {
   const { sortField, sortOrder, setSort, sortLabel } = useClipboard()
   const [open, setOpen] = useState(false)
+  const [hoveredKey, setHoveredKey] = useState(null)
   const ref = useRef(null)
 
   useEffect(() => {
@@ -41,22 +42,25 @@ export default function SortDropdown({ style }) {
           boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '4px', zIndex: 2000,
         }}>
           {SORT_OPTIONS.map(({ field, order, label }) => {
+            const key = `${field}-${order}`
             const active = sortField === field && sortOrder === order
+            const hovered = hoveredKey === key && !active
             return (
               <button
-                key={`${field}-${order}`}
+                key={key}
                 onClick={() => { setSort(field, order); setOpen(false) }}
                 style={{
                   display: 'block', width: '100%', padding: '6px 12px',
                   fontSize: 'var(--font-size-sm)', textAlign: 'left',
                   border: 'none', borderRadius: 'var(--radius-sm)',
-                  background: active ? 'var(--color-primary-alpha-12)' : 'transparent',
+                  background: active ? 'var(--color-primary-alpha-12)'
+                    : hovered ? 'var(--color-surface-hover)' : 'transparent',
                   color: active ? 'var(--color-primary)' : 'var(--color-foreground)',
                   cursor: 'pointer', fontFamily: 'inherit',
                   transition: 'background var(--transition-fast)',
                 }}
-                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--color-surface-hover)' }}
-                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
+                onMouseEnter={() => setHoveredKey(key)}
+                onMouseLeave={() => setHoveredKey(null)}
               >
                 {label}
               </button>

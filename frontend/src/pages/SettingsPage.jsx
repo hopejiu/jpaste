@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChevronUp, ChevronDown, Trash2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
@@ -41,6 +41,7 @@ export default function SettingsPage() {
   const [stats, setStats] = useState({ count: 0, total_bytes: 0 })
   const [clearing, setClearing] = useState(false)
   const [showClearModal, setShowClearModal] = useState(false)
+  const [hoveredClearBtn, setHoveredClearBtn] = useState(null)
 
   useEffect(() => {
     HistoryService.GetStats()
@@ -52,36 +53,78 @@ export default function SettingsPage() {
   const parsed = parseHotkey(local.hotkey)
   const [mods, setMods] = useState(parsed.mods)
   const [key, setKey] = useState(parsed.key)
+  const [hotkeyError, setHotkeyError] = useState('')
+  const [hoveredMod, setHoveredMod] = useState(null)
+
+  // Refs to avoid stale closures in useCallback.
+  const localRef = useRef(local)
+  localRef.current = local
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
 
   useEffect(() => {
     setLocal({ ...settings })
     const p = parseHotkey(settings.hotkey)
     setMods(p.mods)
     setKey(p.key)
+    setHotkeyError('')
   }, [settings])
 
-  const handleSave = async (updates) => {
-    const updated = { ...local, ...updates }
+  const handleSave = useCallback(async (updates) => {
+    const current = localRef.current
+    const updated = { ...current, ...updates }
     setLocal(updated)
-    await saveSettings(updated)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
-    // Reload when theme changes so the new theme applies to all windows.
-    if (updates.theme && updates.theme !== settings.theme) {
-      window.location.reload()
+    try {
+      await saveSettings(updated)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+      // Clear hotkey error on successful save.
+      if (updates.hotkey !== undefined) setHotkeyError('')
+      // Reload when theme changes so the new theme applies to all windows.
+      if (updates.theme && updates.theme !== settings.theme) {
+        window.location.reload()
+      }
+    } catch (err) {
+      // Hotkey registration failed — revert to last good settings.
+      if (updates.hotkey !== undefined) {
+        const raw = err.message || ''
+        let msg = raw
+        try { const p = JSON.parse(raw); if (p.message) msg = p.message } catch {}
+        log.warn('SettingsPage', 'hotkey save failed, reverting', { hotkey: updates.hotkey, error: msg })
+        setHotkeyError(msg)
+        const good = settingsRef.current
+        setLocal({ ...good })
+        const p = parseHotkey(good.hotkey)
+        log.debug('SettingsPage', 'revert to', { hotkey: good.hotkey, mods: p.mods, key: p.key })
+        setMods(p.mods)
+        setKey(p.key)
+      }
     }
-  }
+  }, [saveSettings, settings.theme])
 
   const updateHotkey = useCallback((newMods, newKey) => {
+    // Prevent empty hotkey: require at least one mod when key is empty.
+    if (newMods.length === 0 && !newKey) return
+    log.debug('SettingsPage', 'updateHotkey', { mods: newMods, key: newKey })
     setMods(newMods)
     setKey(newKey)
+    setHotkeyError('')
     const sorted = [...newMods].sort((a, b) => MODS.indexOf(a) - MODS.indexOf(b))
     const hk = newKey ? [...sorted, newKey].join('+') : sorted.join('+')
+    log.debug('SettingsPage', 'updateHotkey hk', hk)
     handleSave({ hotkey: hk })
-  }, [])
+  }, [handleSave])
 
   const toggleMod = (m) => {
-    const next = mods.includes(m) ? mods.filter(x => x !== m) : [...mods, m]
+    log.debug('SettingsPage', 'toggleMod', { mod: m, currentMods: mods, currentKey: key })
+    const isSelected = mods.includes(m)
+    let next
+    if (isSelected) {
+      if (mods.length === 1) return
+      next = mods.filter(x => x !== m)
+    } else {
+      next = [...mods, m]
+    }
     updateHotkey(next, key)
   }
 
@@ -157,15 +200,30 @@ export default function SettingsPage() {
           <div style={styles.label}>全局快捷键</div>
           <div style={styles.desc}>显示/隐藏 jPaste 窗口</div>
           <div style={styles.modRow}>
-            {MODS.map(m => (
-              <button
-                key={m}
-                style={{ ...styles.modChip, ...(mods.includes(m) ? styles.modChipActive : {}) }}
-                onClick={() => toggleMod(m)}
-              >
-                {m}
-              </button>
-            ))}
+            {MODS.map(m => {
+              const active = mods.includes(m)
+              const hovered = hoveredMod === m
+              const chipStyle = {
+                ...styles.modChip,
+                ...(active ? {
+                  border: '1px solid var(--color-primary)',
+                  color: 'var(--color-primary)',
+                  background: hovered ? 'var(--color-primary-alpha-12)' : 'var(--color-primary-alpha-08)',
+                } : {}),
+              }
+              return (
+                <button
+                  key={m}
+                  tabIndex={-1}
+                  style={chipStyle}
+                  onClick={() => toggleMod(m)}
+                  onMouseEnter={() => setHoveredMod(m)}
+                  onMouseLeave={() => setHoveredMod(null)}
+                >
+                  {m}
+                </button>
+              )
+            })}
           </div>
           <div style={{ ...styles.label, marginTop: '12px' }}>按键</div>
           <input
@@ -176,6 +234,7 @@ export default function SettingsPage() {
             maxLength={1}
           />
           <div style={styles.hotkeyPreview}>{displayKey || '未设置'}</div>
+          {hotkeyError && <div style={styles.hotkeyError}>{hotkeyError}</div>}
         </div>
 
         {/* Retain Days */}
@@ -370,13 +429,14 @@ export default function SettingsPage() {
                 onClick={() => doClearAll(false)}
                 style={{
                   padding: '10px 16px', borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  background: hoveredClearBtn === 'all' ? 'var(--color-surface-hover)' : 'var(--color-surface)',
                   color: 'var(--color-foreground)', cursor: 'pointer',
                   fontSize: 'var(--font-size-sm)', fontFamily: 'inherit',
                   textAlign: 'left', transition: 'background var(--transition-fast)',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-hover)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface)'}
+                onMouseEnter={() => setHoveredClearBtn('all')}
+                onMouseLeave={() => setHoveredClearBtn(null)}
               >
                 <div style={{ fontWeight: 600 }}>全部删除</div>
                 <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '2px' }}>
@@ -387,13 +447,14 @@ export default function SettingsPage() {
                 onClick={() => doClearAll(true)}
                 style={{
                   padding: '10px 16px', borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)', background: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  background: hoveredClearBtn === 'fav' ? 'var(--color-surface-hover)' : 'var(--color-surface)',
                   color: 'var(--color-foreground)', cursor: 'pointer',
                   fontSize: 'var(--font-size-sm)', fontFamily: 'inherit',
                   textAlign: 'left', transition: 'background var(--transition-fast)',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-hover)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface)'}
+                onMouseEnter={() => setHoveredClearBtn('fav')}
+                onMouseLeave={() => setHoveredClearBtn(null)}
               >
                 <div style={{ fontWeight: 600 }}>保留收藏</div>
                 <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '2px' }}>

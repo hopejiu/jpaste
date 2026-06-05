@@ -16,6 +16,7 @@ export const styles = {
     border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
     background: 'var(--color-surface)', color: 'var(--color-muted)',
     cursor: 'pointer', fontFamily: 'inherit', transition: 'all var(--transition-fast)',
+    outline: 'none',
   },
   modChipActive: {
     borderColor: 'var(--color-primary)', color: 'var(--color-primary)',
@@ -31,6 +32,10 @@ export const styles = {
   hotkeyPreview: {
     marginTop: '10px', fontSize: 'var(--font-size-sm)', color: 'var(--color-muted)',
     fontFamily: 'monospace',
+  },
+  hotkeyError: {
+    marginTop: '8px', fontSize: 'var(--font-size-xs)', color: '#DC2626',
+    lineHeight: 1.4,
   },
 
   retainControl: { display: 'flex', alignItems: 'center', gap: '10px' },

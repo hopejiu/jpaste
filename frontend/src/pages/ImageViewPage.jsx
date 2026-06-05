@@ -20,6 +20,7 @@ export default function ImageViewPage() {
   const [error, setError] = useState(null)
   const [imageList, setImageList] = useState([]) // ordered entry IDs
   const [currentIdx, setCurrentIdx] = useState(-1)
+  const [hoveredNav, setHoveredNav] = useState(null) // 'left' | 'right' | null
 
   const imgRef = useRef(null)
   const imgZoomRef = useRef({ scale: 1, tx: 0, ty: 0, dragging: false, lastX: 0, lastY: 0 })
@@ -145,20 +146,20 @@ export default function ImageViewPage() {
         <>
           {imageList.length > 1 && currentIdx > 0 && (
             <button
-              style={{ ...styles.navBtn, left: 16 }}
+              style={{ ...styles.navBtn, left: 16, opacity: hoveredNav === 'left' ? 1 : 0.6 }}
               onClick={() => navigateImg(-1)}
-              onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-              onMouseLeave={e => e.currentTarget.style.opacity = '0.6'}
+              onMouseEnter={() => setHoveredNav('left')}
+              onMouseLeave={() => setHoveredNav(null)}
             >
               <ChevronLeft size={28} />
             </button>
           )}
           {imageList.length > 1 && currentIdx < imageList.length - 1 && (
             <button
-              style={{ ...styles.navBtn, right: 16 }}
+              style={{ ...styles.navBtn, right: 16, opacity: hoveredNav === 'right' ? 1 : 0.6 }}
               onClick={() => navigateImg(1)}
-              onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-              onMouseLeave={e => e.currentTarget.style.opacity = '0.6'}
+              onMouseEnter={() => setHoveredNav('right')}
+              onMouseLeave={() => setHoveredNav(null)}
             >
               <ChevronRight size={28} />
             </button>

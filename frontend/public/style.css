@@ -157,6 +157,11 @@ body {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
+button:focus,
+button:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
 
 /* ===== Animation Keyframes ===== */
 @keyframes fadeScaleIn {

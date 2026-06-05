@@ -33,7 +33,7 @@ type Service struct {
 	mu                sync.RWMutex
 	path              string
 	data              Data
-	onHotkeyChange    func(old, new string)
+	onHotkeyChange    func(old, new string) error
 	onSettingsChange  func(old, new Data)
 }
 
@@ -58,7 +58,10 @@ func NewService(basePath string) *Service {
 }
 
 // OnHotkeyChange sets a callback invoked when the hotkey setting changes.
-func (s *Service) OnHotkeyChange(fn func(old, new string)) {
+// The callback receives the old and new hotkey strings.
+// If it returns an error, the hotkey change is rejected and SaveSettings
+// returns that error to the frontend.
+func (s *Service) OnHotkeyChange(fn func(old, new string) error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onHotkeyChange = fn
@@ -137,19 +140,32 @@ func (s *Service) GetSettings() Data {
 }
 
 // SaveSettings updates and persists settings.
+// If the hotkey has changed, the onHotkeyChange callback is invoked first.
+// If the callback returns an error, the change is rejected and returned.
 func (s *Service) SaveSettings(d Data) error {
 	s.mu.Lock()
 	oldData := s.data
 	oldHotkey := s.data.Hotkey
-	s.data = d
-	newHotkey := d.Hotkey
 	hkCB := s.onHotkeyChange
 	scCB := s.onSettingsChange
+
+	newHotkey := d.Hotkey
+	hotkeyChanged := oldHotkey != newHotkey
+
+	if hotkeyChanged && hkCB != nil {
+		// Release lock while the callback may do I/O (system hotkey registration).
+		s.mu.Unlock()
+		err := hkCB(oldHotkey, newHotkey)
+		s.mu.Lock()
+		if err != nil {
+			s.mu.Unlock()
+			return err
+		}
+	}
+
+	s.data = d
 	s.mu.Unlock()
 
-	if oldHotkey != newHotkey && hkCB != nil {
-		hkCB(oldHotkey, newHotkey)
-	}
 	// Notify general settings change for other fields.
 	if scCB != nil && changedExceptHotkey(oldData, d) {
 		scCB(oldData, d)

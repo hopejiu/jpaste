@@ -69,12 +69,8 @@ export function AppProvider({ children }) {
   }, [])
 
   const saveSettings = useCallback(async (newSettings) => {
-    try {
-      await SettingsService.SaveSettings(newSettings)
-      setSettings(newSettings)
-    } catch (err) {
-      log.error('AppContext', 'Failed to save settings:', err)
-    }
+    await SettingsService.SaveSettings(newSettings)
+    setSettings(newSettings)
   }, [])
 
   // Set paste order — wraps saveSettings.

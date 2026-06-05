@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Pin, PinOff } from 'lucide-react'
 import { useClipboard, TAGS } from '../context/ClipboardContext'
 import { useApp } from '../context/AppContext'
 import { Service as FileService } from '../../bindings/jpaste/internal/fileop'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
 import { Service as ImageViewerService } from '../../bindings/jpaste/internal/imageviewer'
 import { Service as FiloService } from '../../bindings/jpaste/internal/filostack'
+import { IsPinned, SetPinned } from '../../bindings/jpaste/pinner'
 import { getById } from '../actions'
 import { useActionDetection } from '../hooks/useActionDetection'
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation'
@@ -30,6 +32,18 @@ export default function MainPage() {
   const [focusedIdx, setFocusedIdx] = useState(-1)
   const [modal, setModal] = useState(null)
   const [animatingId, setAnimatingId] = useState(null)
+  const [pinned, setPinned] = useState(false)
+
+  // Init pin state.
+  useEffect(() => {
+    IsPinned().then(v => setPinned(!!v)).catch(() => {})
+  }, [])
+
+  const togglePin = useCallback(() => {
+    const next = !pinned
+    setPinned(next)
+    SetPinned(next).catch(() => setPinned(!next))
+  }, [pinned])
 
   const inputRef = useRef(null)
   const listRef = useRef(null)
@@ -216,6 +230,13 @@ export default function MainPage() {
           }}
         />
         <SortDropdown />
+        <button
+          style={{ ...styles.pinBtn, ...(pinned ? styles.pinBtnActive : {}) }}
+          onClick={togglePin}
+          title={pinned ? '取消置顶（点击后失焦自动隐藏）' : '置顶窗口（保持可见）'}
+        >
+          {pinned ? <Pin size={18} /> : <PinOff size={18} />}
+        </button>
       </div>
 
 
