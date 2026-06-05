@@ -25,7 +25,7 @@ export default function MainPage() {
     useEntry, deleteEntry, toggleFavorite,
   } = useClipboard()
 
-  const { settings, syncStatus, setPasteOrder } = useApp()
+  const { settings, setPasteOrder } = useApp()
 
   const [focusedIdx, setFocusedIdx] = useState(-1)
   const [modal, setModal] = useState(null)
@@ -202,7 +202,6 @@ export default function MainPage() {
         <SearchBar
           search={search}
           onSearchChange={handleSearchChange}
-          syncStatus={syncStatus.status}
           inputRef={inputRef}
           isRegex={isRegex}
           onToggleRegex={toggleRegex}

@@ -1,9 +1,8 @@
 import { useRef, useEffect } from 'react'
 import { Search, X, Settings, Code2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import SyncIndicator from './SyncIndicator'
 
-export default function SearchBar({ search, onSearchChange, syncStatus, inputRef: externalRef, isRegex, onToggleRegex, styles }) {
+export default function SearchBar({ search, onSearchChange, inputRef: externalRef, isRegex, onToggleRegex, styles }) {
   const internalRef = useRef(null)
   const inputRef = externalRef || internalRef
   const navigate = useNavigate()
@@ -36,7 +35,6 @@ export default function SearchBar({ search, onSearchChange, syncStatus, inputRef
       >
         <Code2 size={16} />
       </button>
-      <SyncIndicator status={syncStatus} />
       <button style={styles.settingsBtn} onClick={() => navigate('/settings')} title="设置">
         <Settings size={20} />
       </button>
