@@ -91,8 +91,14 @@ func main() {
 		}
 	})
 
-	// FILO clipboard stack service.
-	filoStack := filostack.NewService(clipboard.WriteText)
+	// Helper: truncate text to at most n runes for display.
+	previewShort := func(s string, n int) string {
+		runes := []rune(s)
+		if len(runes) > n {
+			return string(runes[:n]) + "..."
+		}
+		return s
+	}
 
 	// Toast service — frameless window for clipboard notifications.
 	var createToastWindowFn func(path string)
@@ -103,16 +109,26 @@ func main() {
 		}
 	})
 
+	notify := func(title, msg string) {
+		if sett.GetSettings().NotifyEnabled {
+			toastSvc.ShowToast(title, msg)
+		}
+	}
+
+	// FILO clipboard stack service.
+	filoStack := filostack.NewService(clipboard.WriteText,
+		filostack.WithNotifyFunc(func(title, msg string) {
+			notify(title, msg)
+		}),
+	)
+
 	// History service with capture pipeline hooks.
 	entryStore := history.NewSQLiteStore(conn)
 	histSvc := history.NewService(entryStore, clipboardImpl{},
 		history.WithPasteFunc(func() { doPaste() }),
 		history.WithEmitFunc(func(name string, data any) { handle.Emit(name, data) }),
-		history.WithNotifyFunc(func(title, msg string) {
-			if sett.GetSettings().NotifyEnabled {
-				toastSvc.ShowToast(title, msg)
-			}
-		}),
+		// Notification is handled in the watcher callback after Push, so count is correct.
+		history.WithNotifyFunc(func(title, msg string) {}),
 		history.WithSyncPushFunc(func(hash string, formats []history.SyncFormat) {
 			syncSvc.PushEntry(sync.PushInput{ContentHash: hash, Formats: formats})
 		}),
@@ -194,6 +210,18 @@ func main() {
 		if stackEnabled && !isSelfWrite && textToPush != "" {
 			filoStack.Push(textToPush)
 		}
+
+		// Notify after Push so the count reflects the current item.
+		if isNew && sett.GetSettings().NotifyEnabled {
+			contentPreview := previewShort(entry.Content, 10)
+			if filoStack.Enabled() {
+				modeLabel := map[string]string{filostack.ModeStack: "栈", filostack.ModeQueue: "队列"}[filoStack.Mode()]
+				toastSvc.ShowToast("jPaste",
+					fmt.Sprintf("剪贴板写入: %s, 当前%s已有: %d 个", contentPreview, modeLabel, filoStack.Len()))
+			} else {
+				toastSvc.ShowToast("jPaste", "剪贴板写入: "+contentPreview)
+			}
+		}
 	})
 
 	// Create Wails app.
@@ -227,6 +255,27 @@ func main() {
 	})
 
 	handle.Wire(app)
+
+	// Frontend log relay — listen for Events.Emit('frontend-log', ...) from JS.
+	app.Event.On(events.FrontendLog, func(event *application.CustomEvent) {
+		data, ok := event.Data.(map[string]any)
+		if !ok {
+			return
+		}
+		component, _ := data["component"].(string)
+		msg, _ := data["msg"].(string)
+		level, _ := data["level"].(string)
+		switch level {
+		case "debug":
+			applog.Debug(msg, "component", component)
+		case "warn":
+			applog.Warn(msg, "component", component)
+		case "error":
+			applog.Error(msg, "component", component)
+		default:
+			applog.Info(msg, "component", component)
+		}
+	})
 
 	// F12 打开开发者工具（调试用，生产构建也需要保留以便排查问题）。
 	app.KeyBinding.Add("F12", func(window application.Window) {

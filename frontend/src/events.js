@@ -17,4 +17,7 @@ export const EVENTS = {
 
 // Paste order (stack / queue / normal)
   PASTE_ORDER_CHANGED: 'paste-order-changed',
+
+  // Frontend log relay
+  FRONTEND_LOG: 'frontend-log',
 }

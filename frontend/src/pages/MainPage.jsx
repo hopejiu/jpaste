@@ -14,6 +14,7 @@ import TagTabs from '../components/TagTabs'
 import EntryList from '../components/EntryList'
 import ActionModal from '../components/ActionModal'
 import { styles } from './MainPage.styles'
+import { log } from '../logger'
 
 export default function MainPage() {
   const {
@@ -52,7 +53,7 @@ export default function MainPage() {
     try {
       await FileService.OpenInEditor(id)
     } catch (err) {
-      console.error('Failed to open in editor:', err)
+      log.error('MainPage', 'Failed to open in editor:', err)
     }
   }, [])
 

@@ -29,3 +29,8 @@ const (
 const (
 	PasteOrderChanged = "paste-order-changed"
 )
+
+// Frontend log relay
+const (
+	FrontendLog = "frontend-log"
+)

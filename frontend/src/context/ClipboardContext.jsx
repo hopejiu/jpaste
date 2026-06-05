@@ -2,6 +2,7 @@ import { createContext, useContext, useReducer, useCallback, useEffect, useRef }
 import { Events } from '@wailsio/runtime'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
 import { EVENTS } from '../events'
+import { log } from '../logger'
 
 const ClipboardContext = createContext(null)
 
@@ -151,7 +152,7 @@ export function ClipboardProvider({ children, initialSortField, initialSortOrder
         dispatch({ type: 'LOAD_FIRST_PAGE', payload: { list: [], hasMore: false, cursor: { updatedAt: '', id: 0 } } })
       }
     } catch (err) {
-      console.error('Failed to load history:', err)
+      log.error('ClipboardContext', 'Failed to load history:', err)
       dispatch({ type: 'LOAD_ERROR' })
     }
   }, [])
@@ -178,7 +179,7 @@ export function ClipboardProvider({ children, initialSortField, initialSortOrder
         }
       }
     } catch (err) {
-      console.error('Failed to load more:', err)
+      log.error('ClipboardContext', 'Failed to load more:', err)
       dispatch({ type: 'LOAD_ERROR' })
     }
   }, [])
@@ -190,7 +191,7 @@ export function ClipboardProvider({ children, initialSortField, initialSortOrder
       const list = await HistoryService.GetHistoryRegex(pattern, tagMask, sortField, sortOrder)
       dispatch({ type: 'LOAD_REGEX', payload: list || [] })
     } catch (err) {
-      console.error('Failed to regex search:', err)
+      log.error('ClipboardContext', 'Failed to regex search:', err)
       dispatch({ type: 'LOAD_REGEX', payload: [] })
     }
   }, [])
@@ -269,7 +270,7 @@ export function ClipboardProvider({ children, initialSortField, initialSortOrder
       const s = stateRef.current
       refreshHistory(s.search, s.activeTag, s.sortField, s.sortOrder)
     } catch (err) {
-      console.error('Failed to use entry:', err)
+      log.error('ClipboardContext', 'Failed to use entry:', err)
     }
   }, [refreshHistory])
 
@@ -279,7 +280,7 @@ export function ClipboardProvider({ children, initialSortField, initialSortOrder
     try {
       await HistoryService.DeleteEntry(id)
     } catch (err) {
-      console.error('Failed to delete entry:', err)
+      log.error('ClipboardContext', 'Failed to delete entry:', err)
       // Reload on failure to recover.
       const s = stateRef.current
       refreshHistory(s.search, s.activeTag, s.sortField, s.sortOrder)
@@ -297,7 +298,7 @@ export function ClipboardProvider({ children, initialSortField, initialSortOrder
     try {
       await HistoryService.ToggleFavorite(id, value)
     } catch (err) {
-      console.error('Failed to toggle favorite:', err)
+      log.error('ClipboardContext', 'Failed to toggle favorite:', err)
       // Revert on failure.
       dispatch({ type: 'TOGGLE_FAVORITE', payload: { id, value: !value } })
     }

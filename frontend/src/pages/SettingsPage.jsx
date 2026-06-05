@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronUp, ChevronDown, Trash2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useClipboard } from '../context/ClipboardContext'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
+import { log } from '../logger'
 import { getAll } from '../actions'
 import { formatBytes } from '../utils/format'
 import ToggleSwitch from '../components/ToggleSwitch'
@@ -116,7 +117,7 @@ export default function SettingsPage() {
       // Fetch real stats after deletion (some entries may remain if keepFavorites).
       HistoryService.GetStats().then(s => { if (s) setStats(s) }).catch(() => {})
     } catch (err) {
-      console.error('ClearAll failed:', err)
+      log.error('SettingsPage', 'ClearAll failed:', err)
     } finally {
       setClearing(false)
     }

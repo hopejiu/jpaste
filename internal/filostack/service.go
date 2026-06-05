@@ -38,15 +38,28 @@ type Service struct {
 
 	// callbacks
 	onWriteText func(text string) bool
+	onNotify    func(title, msg string)
+}
+
+// Option configures Service.
+type Option func(*Service)
+
+// WithNotifyFunc sets a callback invoked when an item is pasted.
+func WithNotifyFunc(fn func(title, msg string)) Option {
+	return func(s *Service) { s.onNotify = fn }
 }
 
 // NewService creates a Service.
-func NewService(onWriteText func(text string) bool) *Service {
-	return &Service{
+func NewService(onWriteText func(text string) bool, opts ...Option) *Service {
+	s := &Service{
 		onWriteText: onWriteText,
 		items:       list.New(),
 		mode:        ModeNormal,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // ServiceStartup implements wails Service.
@@ -234,6 +247,15 @@ func (s *Service) handleHookKey() {
 	s.MarkSelfWrite(text)
 	ok = s.onWriteText(text)
 	log.Printf("[filostack] hook: WriteText returned %v", ok)
+	if ok && s.onNotify != nil {
+		modeLabel := map[string]string{ModeStack: "栈", ModeQueue: "队列"}[s.Mode()]
+		if modeLabel == "" {
+			modeLabel = "?"
+		}
+		// Pop happened above — s.Len() is the remaining count after this paste.
+		s.onNotify("jPaste", fmt.Sprintf("成功粘贴, 当前%s已有: %d 个", modeLabel, s.Len()))
+		return
+	}
 }
 
 // --- helpers ---

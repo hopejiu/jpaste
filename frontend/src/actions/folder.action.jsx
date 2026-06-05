@@ -1,4 +1,5 @@
 import { Service as FileService } from '../../bindings/jpaste/internal/fileop'
+import { log } from '../logger'
 
 function isFilePath(path) {
   const cleaned = path.trim().replace(/[\\/]+$/, '')
@@ -8,7 +9,7 @@ function isFilePath(path) {
 
 function openFolder(content, entryId) {
   const isFile = isFilePath(content)
-  FileService.OpenInExplorer(entryId, isFile).catch(e => console.error('Failed to open:', e))
+  FileService.OpenInExplorer(entryId, isFile).catch(e => log.error('FolderAction', 'Failed to open:', e))
 }
 
 export default {

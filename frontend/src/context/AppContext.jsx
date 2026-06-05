@@ -3,6 +3,7 @@ import { Events } from '@wailsio/runtime'
 import { Service as SettingsService } from '../../bindings/jpaste/internal/settings'
 import { Service as SyncService } from '../../bindings/jpaste/internal/sync'
 import { EVENTS } from '../events'
+import { log } from '../logger'
 import { defaultConfig } from '../actions'
 
 const AppContext = createContext(null)
@@ -33,7 +34,7 @@ export function AppProvider({ children }) {
         const actionConfig = { ...defaultConfig(), ...(s.action_config || {}) }
         setSettings({ ...s, action_config: actionConfig })
       })
-      .catch(console.error)
+      .catch(e => log.error('AppContext', e))
   }, [])
 
   // Load WebDAV config.
@@ -44,7 +45,7 @@ export function AppProvider({ children }) {
           setWdConfig({ url: c.url || '', username: c.username || '', password: c.password || '', enabled: c.enabled || false })
         }
       })
-      .catch(e => console.error('GetConfig error:', e))
+      .catch(e => log.error('AppContext', 'GetConfig error:', e))
   }, [])
 
   const refreshWdConfig = useCallback(async () => {
@@ -54,7 +55,7 @@ export function AppProvider({ children }) {
         setWdConfig({ url: c.url || '', username: c.username || '', password: c.password || '', enabled: c.enabled || false })
       }
     } catch (e) {
-      console.error('[wd:ctx] refresh config error:', e)
+      log.error('AppContext', 'refresh config error:', e)
     }
   }, [])
 
@@ -71,7 +72,7 @@ export function AppProvider({ children }) {
       await SettingsService.SaveSettings(newSettings)
       setSettings(newSettings)
     } catch (err) {
-      console.error('Failed to save settings:', err)
+      log.error('AppContext', 'Failed to save settings:', err)
     }
   }, [])
 

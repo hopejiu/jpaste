@@ -7,6 +7,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 // eslint-disable-next-line import/no-unresolved
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
 
+import { log } from '../logger'
+
 export default function ImageViewPage() {
   const [searchParams] = useSearchParams()
   const id = parseInt(searchParams.get('id'), 10)
@@ -39,7 +41,7 @@ export default function ImageViewPage() {
         return loadImage(id)
       })
       .catch((err) => {
-        console.error('[ImageViewPage] list error:', err)
+        log.error('ImageViewPage', 'list error:', err)
         return loadImage(id)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -55,7 +57,7 @@ export default function ImageViewPage() {
         autoSizeWindow(url)
       })
       .catch((err) => {
-        console.error('[ImageViewPage] load error:', err)
+        log.error('ImageViewPage', 'load error:', err)
         setError('加载图片失败')
         setLoading(false)
       })

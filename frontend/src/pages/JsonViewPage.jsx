@@ -6,6 +6,8 @@ import { Window } from '@wailsio/runtime'
 // eslint-disable-next-line import/no-unresolved
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
 
+import { log } from '../logger'
+
 export default function JsonViewPage() {
   const [searchParams] = useSearchParams()
   const entryId = parseInt(searchParams.get('id'), 10)
@@ -17,7 +19,7 @@ export default function JsonViewPage() {
   const fetchedRef = useRef(false)
   const JSONEditorRef = useRef(null)
 
-  console.log('[JsonViewPage] render, id=', entryId, 'loading=', loading, 'hasData=', !!jsonData)
+  log.info('JsonViewPage', 'render, id=', entryId, 'loading=', loading, 'hasData=', !!jsonData)
 
   // Fetch JSON content by entry ID from the database.
   useEffect(() => {
@@ -27,15 +29,15 @@ export default function JsonViewPage() {
       return
     }
     if (fetchedRef.current) {
-      console.log('[JsonViewPage] skip duplicate fetch (StrictMode)')
+      log.info('JsonViewPage', 'skip duplicate fetch (StrictMode)')
       return
     }
     fetchedRef.current = true
 
-    console.log('[JsonViewPage] calling GetEntryContent, id=', entryId)
+    log.info('JsonViewPage', 'calling GetEntryContent, id=', entryId)
     HistoryService.GetEntryContent(entryId)
       .then((data) => {
-        console.log('[JsonViewPage] data received, len=', data?.length)
+        log.info('JsonViewPage', 'data received, len=', data?.length)
         if (!data) {
           setError('条目内容为空')
           setLoading(false)
@@ -49,7 +51,7 @@ export default function JsonViewPage() {
         }
       })
       .catch((err) => {
-        console.error('[JsonViewPage] fetch error:', err)
+        log.error('JsonViewPage', 'fetch error:', err)
         setError(err?.message || '获取数据失败')
         setLoading(false)
       })
@@ -60,16 +62,16 @@ export default function JsonViewPage() {
   // jsoneditor is dynamically imported so it's code-split from the main entry.
   useEffect(() => {
     if (!jsonData || !containerRef.current) {
-      console.log('[JsonViewPage] editor init skipped, container=', !!containerRef.current, 'data=', !!jsonData)
+      log.info('JsonViewPage', 'editor init skipped, container=', !!containerRef.current, 'data=', !!jsonData)
       return
     }
     if (editorRef.current) {
-      console.log('[JsonViewPage] editor already exists, updating data')
+      log.info('JsonViewPage', 'editor already exists, updating data')
       editorRef.current.update(jsonData)
       return
     }
 
-    console.log('[JsonViewPage] loading jsoneditor dynamically')
+    log.info('JsonViewPage', 'loading jsoneditor dynamically')
     let cancelled = false
     Promise.all([
       import('jsoneditor'),
@@ -77,7 +79,7 @@ export default function JsonViewPage() {
     ]).then(([{ default: JSONEditor }]) => {
       if (cancelled) return
       JSONEditorRef.current = JSONEditor
-      console.log('[JsonViewPage] creating JSONEditor instance')
+      log.info('JsonViewPage', 'creating JSONEditor instance')
       const editor = new JSONEditor(containerRef.current, {
         mode: 'tree',
         modes: ['tree', 'code'],
@@ -92,7 +94,7 @@ export default function JsonViewPage() {
       }, jsonData)
 
       editorRef.current = editor
-      console.log('[JsonViewPage] editor created OK')
+      log.info('JsonViewPage', 'editor created OK')
     })
     return () => { cancelled = true }
   }, [jsonData])
@@ -101,7 +103,7 @@ export default function JsonViewPage() {
   useEffect(() => {
     return () => {
       if (editorRef.current) {
-        console.log('[JsonViewPage] destroying editor')
+        log.info('JsonViewPage', 'destroying editor')
         editorRef.current.destroy()
         editorRef.current = null
       }
