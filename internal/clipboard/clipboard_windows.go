@@ -16,6 +16,8 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"jpaste/internal/model"
+
 	"github.com/lxn/win"
 )
 
@@ -86,7 +88,7 @@ func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 
 	ready := make(chan win.HWND, 1)
 	errCh := make(chan error, 1)
-	dataCh := make(chan CapturedData, 64)
+	dataCh := make(chan model.CapturedData, 64)
 	done := make(chan struct{})
 
 	// Window creation + message pump on a single locked OS thread.
@@ -180,16 +182,16 @@ func clipboardWndProc(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr
 	return win.DefWindowProc(hwnd, msg, wParam, lParam)
 }
 
-func captureAll() CapturedData {
+func captureAll() model.CapturedData {
 	if !win.OpenClipboard(0) {
 		log.Println("[clipboard] OpenClipboard failed for capture")
-		return CapturedData{}
+		return model.CapturedData{}
 	}
 	defer win.CloseClipboard()
 
 	formats := enumFormats()
 	log.Printf("[clipboard] EnumFormats count=%d", len(formats))
-	var cf []CapturedFormat
+	var cf []model.CapturedFormat
 	var textContent string
 
 	for _, f := range formats {
@@ -197,12 +199,12 @@ func captureAll() CapturedData {
 			txt := readClipboardHDROP()
 			if txt != "" {
 				log.Printf("[clipboard] CF_HDROP parsed: paths=%q", txt)
-				cf = append(cf, CapturedFormat{FormatType: f, Text: txt})
+				cf = append(cf, model.CapturedFormat{FormatType: f, Text: txt})
 			}
 		} else if isTextFormat(f) {
 			txt := readClipboardText(f)
 			if txt != "" {
-				cf = append(cf, CapturedFormat{FormatType: f, Text: txt})
+				cf = append(cf, model.CapturedFormat{FormatType: f, Text: txt})
 				if f == win.CF_UNICODETEXT {
 					textContent = txt
 				}
@@ -210,7 +212,7 @@ func captureAll() CapturedData {
 		} else if isImageFormat(f) {
 			raw := readClipboardBytes(f)
 			if len(raw) > 0 {
-				cf = append(cf, CapturedFormat{FormatType: f, RawData: raw})
+				cf = append(cf, model.CapturedFormat{FormatType: f, RawData: raw})
 			}
 		}
 	}
@@ -241,7 +243,7 @@ func captureAll() CapturedData {
 	}
 	if len(hashInput) == 0 {
 		log.Println("[clipboard] No hashable content, returning empty")
-		return CapturedData{}
+		return model.CapturedData{}
 	}
 
 	h := sha256.Sum256(hashInput)
@@ -254,7 +256,7 @@ func captureAll() CapturedData {
 	}
 
 	log.Printf("[clipboard] Capture success: hash=%s source=%q", hashStr[:8], exe)
-	return CapturedData{
+	return model.CapturedData{
 		Formats:     cf,
 		SourceEXE:   exe,
 		SourceTitle: title,
@@ -262,7 +264,7 @@ func captureAll() CapturedData {
 	}
 }
 
-func hasHdropFormat(formats []CapturedFormat) bool {
+func hasHdropFormat(formats []model.CapturedFormat) bool {
 	for _, f := range formats {
 		if f.FormatType == win.CF_HDROP {
 			return true

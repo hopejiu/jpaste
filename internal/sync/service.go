@@ -3,7 +3,6 @@ package sync
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,7 +11,7 @@ import (
 	"time"
 
 	"jpaste/internal/events"
-	"jpaste/internal/history"
+	"jpaste/internal/model"
 	"jpaste/internal/settings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -34,27 +33,21 @@ type StatusEvent struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// syncFormat is a text format stored on WebDAV.
-type syncFormat struct {
-	FormatType uint32 `json:"t"`
-	Content    string `json:"c"`
-}
-
 // entryPayload is the JSON format of a single entry file on WebDAV.
 type entryPayload struct {
-	Formats   []syncFormat `json:"formats"`
-	UpdatedAt string       `json:"updated_at"`
+	Formats   []model.SyncFormat `json:"formats"`
+	UpdatedAt string             `json:"updated_at"`
 }
 
 // Service drives the WebDAV bidirectional sync loop.
 type Service struct {
-	mu         sync.Mutex
-	db         *sql.DB
-	settingSvc *settings.Service
-	emit       func(name string, data any)
-	basePath   string
-	cfg        Config
-	client     WebDAVClient
+	mu            sync.Mutex
+	store         SyncStore
+	settingReader settings.SettingsReader
+	emit          func(name string, data any)
+	basePath      string
+	cfg           Config
+	client        WebDAVClient
 
 	backoffUntil time.Time
 	backoffCount int
@@ -67,18 +60,18 @@ type Service struct {
 // PushInput is a clipboard entry queued for upload.
 type PushInput struct {
 	ContentHash string
-	Formats     []history.SyncFormat
+	Formats     []model.SyncFormat
 }
 
 // NewService creates a sync service.
-func NewService(basePath string, db *sql.DB, sett *settings.Service, emit func(name string, data any)) *Service {
+func NewService(basePath string, store SyncStore, sett settings.SettingsReader, emit func(name string, data any)) *Service {
 	s := &Service{
-		db:         db,
-		settingSvc: sett,
-		emit:       emit,
-		basePath:   basePath,
-		pushCh:     make(chan PushInput, 128),
-		stopCh:     make(chan struct{}),
+		store:         store,
+		settingReader: sett,
+		emit:          emit,
+		basePath:      basePath,
+		pushCh:        make(chan PushInput, 128),
+		stopCh:        make(chan struct{}),
 	}
 	cfg, err := loadConfig(basePath)
 	if err != nil {
@@ -232,12 +225,8 @@ func (s *Service) doPush(input PushInput) {
 		return
 	}
 
-	var sf []syncFormat
-	for _, f := range input.Formats {
-		sf = append(sf, syncFormat{FormatType: f.FormatType, Content: f.Content})
-	}
 	payload := entryPayload{
-		Formats:   sf,
+		Formats:   input.Formats,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -306,18 +295,20 @@ func (s *Service) fullPull() {
 	pushed := 0
 
 	for _, re := range remoteEntries {
-		var localUpdated string
-		err := s.db.QueryRow(
-			`SELECT updated_at FROM clipboard_entry WHERE content_hash = ?`, re.Hash,
-		).Scan(&localUpdated)
+		localUpdated, err := s.store.GetLocalUpdatedAt(re.Hash)
+		if err != nil {
+			log.Printf("sync: query %s: %v", re.Hash[:12], err)
+			continue
+		}
 
-		if err == sql.ErrNoRows {
+		if localUpdated == "" {
+			// Not local — pull.
 			if err := s.pullEntry(cl, re); err != nil {
 				log.Printf("sync: pull entry %s: %v", re.Hash[:12], err)
 			} else {
 				pulled++
 			}
-		} else if err == nil {
+		} else {
 			localT, _ := parseDBTime(localUpdated)
 			if re.LastModified.After(localT) {
 				if err := s.pullEntry(cl, re); err != nil {
@@ -329,48 +320,28 @@ func (s *Service) fullPull() {
 		}
 	}
 
+	// Build remote set for push-diff.
 	remoteSet := make(map[string]bool, len(remoteEntries))
 	for _, re := range remoteEntries {
 		remoteSet[re.Hash] = true
 	}
 
-	rows, err := s.db.Query(`SELECT content_hash, updated_at FROM clipboard_entry ORDER BY updated_at DESC LIMIT 500`)
+	localEntries, err := s.store.ListLocalEntries(500)
 	if err != nil {
 		log.Printf("sync: query local entries: %v", err)
 	} else {
-		defer rows.Close()
-		for rows.Next() {
-			var hash, updatedAt string
-			if err := rows.Scan(&hash, &updatedAt); err != nil {
+		for _, le := range localEntries {
+			if remoteSet[le.Hash] {
 				continue
 			}
-			if remoteSet[hash] {
+			sf, fErr := s.store.GetTextFormats(le.Hash)
+			if fErr != nil || len(sf) == 0 {
 				continue
 			}
-			// Push local text formats to remote.
-			fRows, fErr := s.db.Query(
-				`SELECT format_type, content FROM clipboard_format WHERE entry_id = (SELECT id FROM clipboard_entry WHERE content_hash = ?) AND content IS NOT NULL AND content != ''`,
-				hash,
-			)
-			if fErr != nil {
-				continue
-			}
-			var sf []syncFormat
-			for fRows.Next() {
-				var ft uint32
-				var c string
-				if err := fRows.Scan(&ft, &c); err == nil {
-					sf = append(sf, syncFormat{FormatType: ft, Content: c})
-				}
-			}
-			fRows.Close()
-			if len(sf) == 0 {
-				continue
-			}
-			payload := entryPayload{Formats: sf, UpdatedAt: toRFC3339(updatedAt)}
+			payload := entryPayload{Formats: sf, UpdatedAt: toRFC3339(le.UpdatedAt)}
 			data, _ := json.Marshal(payload)
-			if err := cl.PutEntry(hash, data); err != nil {
-				log.Printf("sync: push missing %s: %v", hash[:12], err)
+			if err := cl.PutEntry(le.Hash, data); err != nil {
+				log.Printf("sync: push missing %s: %v", le.Hash[:12], err)
 			} else {
 				pushed++
 			}
@@ -397,7 +368,7 @@ func (s *Service) pullEntry(cl WebDAVClient, re RemoteEntry) error {
 		return fmt.Errorf("unmarshal: %w", err)
 	}
 
-	cfg := s.settingSvc.GetSettings()
+	cfg := s.settingReader.GetSettings()
 	t, err := time.Parse(time.RFC3339, ep.UpdatedAt)
 	if err == nil {
 		cutoff := time.Now().AddDate(0, 0, -cfg.RetainDays)
@@ -406,7 +377,7 @@ func (s *Service) pullEntry(cl WebDAVClient, re RemoteEntry) error {
 		}
 	}
 
-	// Convert RFC3339 → millisecond format for consistent DB comparison.
+	// Convert RFC3339 to millisecond format.
 	var dbTime string
 	t, parseErr := time.Parse(time.RFC3339, ep.UpdatedAt)
 	if parseErr == nil {
@@ -415,31 +386,16 @@ func (s *Service) pullEntry(cl WebDAVClient, re RemoteEntry) error {
 		dbTime = ep.UpdatedAt
 	}
 
-	_, err = s.db.Exec(
-		`INSERT INTO clipboard_entry (content_hash, created_at, updated_at)
-		 VALUES (?, ?, ?)
-		 ON CONFLICT(content_hash) DO UPDATE SET
-		   updated_at = excluded.updated_at
-		   WHERE excluded.updated_at > updated_at`,
-		re.Hash, dbTime, dbTime,
-	)
+	entryID, err := s.store.UpsertEntry(re.Hash, dbTime)
 	if err != nil {
-		return fmt.Errorf("upsert entry: %w", err)
+		return fmt.Errorf("upsert: %w", err)
 	}
 
-	// Get entry ID.
-	var entryID int64
-	if err := s.db.QueryRow(`SELECT id FROM clipboard_entry WHERE content_hash = ?`, re.Hash).Scan(&entryID); err != nil {
-		return fmt.Errorf("get entry id: %w", err)
-	}
-
-	// Upsert formats.
 	for _, sf := range ep.Formats {
 		h := sha256hex(sf.Content)
-		s.db.Exec(
-			`INSERT OR IGNORE INTO clipboard_format (entry_id, format_type, content, format_hash) VALUES (?, ?, ?, ?)`,
-			entryID, sf.FormatType, sf.Content, h,
-		)
+		if err := s.store.InsertFormat(entryID, sf.FormatType, sf.Content, h); err != nil {
+			log.Printf("sync: insert format for %s: %v", re.Hash[:12], err)
+		}
 	}
 
 	s.emit(events.ClipboardUpdated, nil)
@@ -454,7 +410,7 @@ func (s *Service) cleanupCloud() {
 		return
 	}
 
-	cfg := s.settingSvc.GetSettings()
+	cfg := s.settingReader.GetSettings()
 	cutoff := time.Now().AddDate(0, 0, -cfg.RetainDays)
 
 	entries, err := cl.ListEntries()
@@ -515,7 +471,6 @@ func (s *Service) emitStatusLocked(st Status, errMsg string) {
 }
 
 func parseDBTime(s string) (time.Time, error) {
-	// Try millisecond format first, fall back to second-level.
 	t, err := time.Parse("2006-01-02T15:04:05.000", s)
 	if err != nil {
 		return time.Parse("2006-01-02 15:04:05", s)

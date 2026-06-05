@@ -23,6 +23,7 @@ import (
 	"jpaste/internal/imageviewer"
 	"jpaste/internal/jsonviewer"
 	applog "jpaste/internal/log"
+	"jpaste/internal/model"
 	"jpaste/internal/settings"
 	"jpaste/internal/sync"
 	"jpaste/internal/toast"
@@ -85,7 +86,8 @@ func main() {
 	imageStore := history.NewImageStore(appData)
 
 	// Sync service (WebDAV).
-	syncSvc := sync.NewService(appData, conn, sett, func(name string, data any) {
+	syncStore := sync.NewSQLSyncStore(conn)
+	syncSvc := sync.NewService(appData, syncStore, sett, func(name string, data any) {
 		if handle.app != nil {
 			handle.Emit(name, data)
 		}
@@ -128,7 +130,7 @@ func main() {
 		history.WithEmitFunc(func(name string, data any) { handle.Emit(name, data) }),
 		// Notification is handled in the watcher callback after Push, so count is correct.
 		history.WithNotifyFunc(func(title, msg string) {}),
-		history.WithSyncPushFunc(func(hash string, formats []history.SyncFormat) {
+		history.WithSyncPushFunc(func(hash string, formats []model.SyncFormat) {
 			syncSvc.PushEntry(sync.PushInput{ContentHash: hash, Formats: formats})
 		}),
 		history.WithImageStore(imageStore),
@@ -137,9 +139,9 @@ func main() {
 	// File-manager function (wired after app creation).
 	var openFileManagerFn func(string, bool) error
 	fileSvc := fileop.NewService(func(id int64) (string, error) {
-		c, err := entryStore.QueryFormatContent(id, clipboard.CF_UNICODETEXT)
+		c, err := entryStore.QueryFormatContent(id, model.CF_UNICODETEXT)
 		if err != nil || c == "" {
-			c, err = entryStore.QueryFormatContent(id, clipboard.CF_HDROP)
+			c, err = entryStore.QueryFormatContent(id, model.CF_HDROP)
 		}
 		return c, err
 	}, fileop.WithOpenFileManager(func(path string, selectFile bool) error {
@@ -181,7 +183,7 @@ func main() {
 	}
 
 	// Watcher — event-driven via WM_CLIPBOARDUPDATE.
-	watcher := clipboard.NewWatcher(func(data clipboard.CapturedData) {
+	watcher := clipboard.NewWatcher(func(data model.CapturedData) {
 		applog.Info("capture callback", "formats", len(data.Formats), "hash", data.PrimaryHash[:12], "source", data.SourceEXE)
 		entry, isNew := histSvc.CaptureEntry(data)
 		if isNew {
@@ -195,7 +197,7 @@ func main() {
 		isSelfWrite := clipboard.IsSelfWrite(data)
 		var textToPush string
 		for _, f := range data.Formats {
-			if clipboard.IsTextFormat(f.FormatType) && f.Text != "" {
+			if model.IsTextFormat(f.FormatType) && f.Text != "" {
 				textToPush = f.Text
 				break
 			}
@@ -210,12 +212,35 @@ func main() {
 			filoStack.Push(textToPush)
 		}
 
+		// When in stack/queue mode, detect non-text captures (images, files)
+		// and auto-exit the mode with a toast.
+		if stackEnabled && !isSelfWrite {
+			hasNonText := false
+			for _, f := range data.Formats {
+				if model.IsImageFormat(f.FormatType) || model.IsHdropFormat(f.FormatType) {
+					hasNonText = true
+					break
+				}
+			}
+			if hasNonText {
+				modeLabel := map[string]string{filostack.ModeStack: "栈", filostack.ModeQueue: "队列"}[filoStack.Mode()]
+				itemCount := filoStack.Len()
+
+				newSettings := sett.GetSettings()
+				newSettings.PasteOrder = "normal"
+				sett.SaveSettings(newSettings)
+
+				toastSvc.ShowToast("jPaste",
+					fmt.Sprintf("检测到非文本内容，已退出%s模式（剩余 %d 项已清空）", modeLabel, itemCount))
+			}
+		}
+
 		// Notify（无论是否新内容，重复也弹）。
 		if sett.GetSettings().NotifyEnabled {
 			// CaptureEntry 在去重时返回 nil entry，此时用 data.Formats 中的纯文本兜底。
-			previewSource := entry.Content
-			if entry == nil {
-				previewSource = textToPush
+			previewSource := textToPush
+			if entry != nil {
+				previewSource = entry.Content
 			}
 			contentPreview := previewShort(previewSource, 10)
 			if filoStack.Enabled() {
@@ -255,6 +280,7 @@ func main() {
 			application.NewService(jsonViewerSvc),
 			application.NewService(imageViewerSvc),
 			application.NewService(toastSvc),
+			application.NewService(filoStack),
 		},
 	})
 

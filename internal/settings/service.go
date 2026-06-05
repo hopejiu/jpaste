@@ -23,6 +23,11 @@ type Data struct {
 	Theme          string          `json:"theme"`                    // "a" (冷调极简) / "b" (暖调高效) / "c" (深色沉浸)
 }
 
+// SettingsReader provides read-only access to settings.
+type SettingsReader interface {
+	GetSettings() Data
+}
+
 // Service reads and writes settings from a JSON file.
 type Service struct {
 	mu                sync.RWMutex

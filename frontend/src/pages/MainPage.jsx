@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { Service as FileService } from '../../bindings/jpaste/internal/fileop'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
 import { Service as ImageViewerService } from '../../bindings/jpaste/internal/imageviewer'
+import { Service as FiloService } from '../../bindings/jpaste/internal/filostack'
 import { getById } from '../actions'
 import { useActionDetection } from '../hooks/useActionDetection'
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation'
@@ -149,7 +150,50 @@ export default function MainPage() {
     useEntry(id, 'paste')
   }, [useEntry])
 
+  // --- Stack/Queue popup ---
+  const [stackItems, setStackItems] = useState([])
+  const [showPopup, setShowPopup] = useState(false)
+  const popupRef = useRef(null)
+
+  const fetchItems = useCallback(async () => {
+    try {
+      const items = await FiloService.GetItems()
+      setStackItems(items || [])
+    } catch { setStackItems([]) }
+  }, [])
+
+  const handlePopupEnter = useCallback(() => {
+    setShowPopup(true)
+    fetchItems()
+  }, [fetchItems])
+
+  const handlePopupLeave = useCallback(() => {
+    setShowPopup(false)
+  }, [])
+
+  const isNonNormal = settings.paste_order === 'stack' || settings.paste_order === 'queue'
+
   const modalAction = modal ? getById(modal.actionId) : null
+
+  const popupStyles = {
+    position: 'absolute',
+    bottom: '100%',
+    right: '0',
+    marginBottom: '6px',
+    minWidth: '200px',
+    maxWidth: '280px',
+    maxHeight: '200px',
+    overflowY: 'auto',
+    background: 'var(--color-elevated)',
+    border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-md)',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+    padding: '8px 0',
+    zIndex: 2000,
+    animation: 'slideDown 120ms ease-out',
+  }
+
+  const modeLabels = { stack: '栈', queue: '队列' }
 
   return (
     <div style={styles.container} onKeyDown={handleKeyDown} tabIndex={0}>
@@ -219,7 +263,12 @@ export default function MainPage() {
       {/* Footer */}
       <div style={styles.footer}>
         <span style={styles.footerText}>Ctrl+L搜索 · Ctrl+E编辑 · Del删除 · Space收藏 · Esc隐藏</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+        <div
+          ref={popupRef}
+          style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}
+          onMouseEnter={handlePopupEnter}
+          onMouseLeave={handlePopupLeave}
+        >
           {['normal', 'stack', 'queue'].map(mode => {
             const active = (settings.paste_order || 'normal') === mode
             const label = mode === 'normal' ? '正常' : mode === 'stack' ? '栈' : '队列'
@@ -244,6 +293,58 @@ export default function MainPage() {
               </button>
             )
           })}
+          {/* Stack/Queue hover popup */}
+          {showPopup && isNonNormal && (
+            <div style={popupStyles}>
+              <div style={{
+                padding: '4px 12px 6px', fontSize: '11px', fontWeight: 600,
+                color: 'var(--color-primary)', borderBottom: '1px solid var(--color-border)',
+                whiteSpace: 'nowrap',
+              }}>
+                {modeLabels[settings.paste_order]} · {stackItems.length} 项
+              </div>
+              {stackItems.length === 0 ? (
+                <div style={{ padding: '12px 16px', fontSize: '12px', color: 'var(--color-muted)', textAlign: 'center' }}>
+                  暂无内容
+                </div>
+              ) : (
+                stackItems.map((item, idx) => {
+                  const isNext = settings.paste_order === 'stack' ? idx === stackItems.length - 1 : idx === 0
+                  return (
+                    <div key={idx} style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '5px 12px', fontSize: '12px',
+                      color: isNext ? 'var(--color-foreground)' : 'var(--color-muted)',
+                      fontWeight: isNext ? 500 : 400,
+                      lineHeight: 1.4,
+                    }}>
+                      <span style={{
+                        flexShrink: 0, fontSize: '10px',
+                        color: isNext ? 'var(--color-primary)' : 'transparent',
+                        width: '14px', textAlign: 'center',
+                      }}>
+                        {isNext ? '▶' : ''}
+                      </span>
+                      <span style={{
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {item}
+                      </span>
+                    </div>
+                  )
+                })
+              )}
+              {/* Explanation */}
+              <div style={{
+                padding: '6px 12px 4px', fontSize: '10px', color: 'var(--color-muted)',
+                borderTop: '1px solid var(--color-border)', lineHeight: 1.4,
+              }}>
+                {settings.paste_order === 'stack'
+                  ? '▶ 下一个将粘贴（后进先出）· 复制图片/文件将自动退出栈模式'
+                  : '▶ 下一个将粘贴（先进先出）· 复制图片/文件将自动退出队列模式'}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

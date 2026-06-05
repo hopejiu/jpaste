@@ -147,8 +147,29 @@ func (s *Service) Len() int {
 	return s.items.Len()
 }
 
+// GetItems returns previews of all items in the current list (newest first for stack).
+// Returns nil when mode is normal. Exposed to frontend via Wails binding.
+func (s *Service) GetItems() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.mode == ModeNormal || s.items.Len() == 0 {
+		return nil
+	}
+
+	// Stack: iterate from back (LIFO — next to paste is last item).
+	// Queue: iterate from front (FIFO — next to paste is first item).
+	// Frontend renders next-item indicator regardless.
+	items := make([]string, 0, s.items.Len())
+	for e := s.items.Front(); e != nil; e = e.Next() {
+		text := e.Value.(string)
+		items = append(items, previewText(text))
+	}
+	return items
+}
+
 // SetMode changes the paste order mode.
-// Switching to normal stops the hook; switching between stack/queue clears the list.
+// Switching to normal stops the hook and clears the list.
+// Switching between stack/queue preserves existing items.
 func (s *Service) SetMode(mode string) {
 	s.mu.Lock()
 	if mode == s.mode {
@@ -164,13 +185,13 @@ func (s *Service) SetMode(mode string) {
 	if mode == ModeNormal {
 		s.stopHook()
 		s.Clear()
-	} else {
-		// Clear list when switching from any mode to a different non-normal mode.
+	} else if oldMode == ModeNormal {
+		// Switching from normal to stack/queue: start fresh.
 		s.Clear()
-		// Start hook if not already running (first time or after normal).
-		// No need to restart if already running from a previous non-normal mode.
-		// But we stopped + cleared, so we need to start.
 		s.startHook()
+	} else {
+		// Switching between stack/queue: preserve items, hook is already running.
+		log.Printf("[filostack] preserved %d items", s.Len())
 	}
 }
 

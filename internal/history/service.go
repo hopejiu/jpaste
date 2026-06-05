@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"jpaste/internal/clipboard"
+	"jpaste/internal/model"
 )
 
 // Service provides clipboard history queries and actions.
@@ -21,7 +21,7 @@ type Service struct {
 	performPaste func()
 	onEmit       func(name string, data any)
 	onNotify     func(title, msg string)
-	onSyncPush   func(contentHash string, formats []SyncFormat)
+	onSyncPush   func(contentHash string, formats []model.SyncFormat)
 }
 
 // ClipboardWriter abstracts clipboard write operations.
@@ -29,12 +29,6 @@ type ClipboardWriter interface {
 	SetText(text string) bool
 	SetImage(dib []byte) bool
 	SetFiles(paths []string) bool
-}
-
-// SyncFormat is a text format payload for sync push.
-type SyncFormat struct {
-	FormatType uint32 `json:"t"`
-	Content    string `json:"c"`
 }
 
 // Option configures the Service.
@@ -49,7 +43,7 @@ func WithEmitFunc(fn func(name string, data any)) Option {
 func WithNotifyFunc(fn func(title, msg string)) Option {
 	return func(s *Service) { s.onNotify = fn }
 }
-func WithSyncPushFunc(fn func(contentHash string, formats []SyncFormat)) Option {
+func WithSyncPushFunc(fn func(contentHash string, formats []model.SyncFormat)) Option {
 	return func(s *Service) { s.onSyncPush = fn }
 }
 func WithImageStore(is ImageStorer) Option {
@@ -71,16 +65,16 @@ func nowMillis() string {
 }
 
 // CaptureEntry persists or deduplicates a clipboard entry.
-func (s *Service) CaptureEntry(data clipboard.CapturedData) (*clipboard.Entry, bool) {
+func (s *Service) CaptureEntry(data model.CapturedData) (*model.Entry, bool) {
 	now := nowMillis()
-	tagMask := clipboard.ComputeTagMask(data.Formats)
+	tagMask := model.ComputeTagMask(data.Formats)
 
 	// File copies (CF_HDROP) are exempt from dedup — they carry richer format
 	// data that should always create a fresh entry even if the text content
 	// matches a previous plain-text copy.
 	hasFileFormat := false
 	for _, f := range data.Formats {
-		if clipboard.IsHdropFormat(f.FormatType) {
+		if model.IsHdropFormat(f.FormatType) {
 			hasFileFormat = true
 			break
 		}
@@ -129,10 +123,10 @@ func (s *Service) CaptureEntry(data clipboard.CapturedData) (*clipboard.Entry, b
 	return entry, true
 }
 
-func (s *Service) saveFormat(entryID int64, f clipboard.CapturedFormat, today string) {
+func (s *Service) saveFormat(entryID int64, f model.CapturedFormat, today string) {
 	h := sha256Hash(f.Text, f.RawData)
 
-	if f.RawData != nil && clipboard.IsImageFormat(f.FormatType) {
+	if f.RawData != nil && model.IsImageFormat(f.FormatType) {
 		if s.imageStore == nil {
 			return
 		}
@@ -146,14 +140,14 @@ func (s *Service) saveFormat(entryID int64, f clipboard.CapturedFormat, today st
 	}
 }
 
-func (s *Service) pushToSync(hash string, formats []clipboard.CapturedFormat) {
+func (s *Service) pushToSync(hash string, formats []model.CapturedFormat) {
 	if s.onSyncPush == nil {
 		return
 	}
-	var sf []SyncFormat
+	var sf []model.SyncFormat
 	for _, f := range formats {
-		if f.Text != "" && !clipboard.IsHdropFormat(f.FormatType) {
-			sf = append(sf, SyncFormat{FormatType: f.FormatType, Content: f.Text})
+		if f.Text != "" && !model.IsHdropFormat(f.FormatType) {
+			sf = append(sf, model.SyncFormat{FormatType: f.FormatType, Content: f.Text})
 		}
 	}
 	if len(sf) > 0 {
@@ -165,7 +159,7 @@ func (s *Service) pushToSync(hash string, formats []clipboard.CapturedFormat) {
 // tagMask=0 means all, afterCursor1="" means first page.
 // tagMask bit 5 (value 32) triggers favorites-only filter.
 // sortField: "updated_at" | "content_length", sortOrder: "asc" | "desc"
-func (s *Service) GetHistory(search string, tagMask int, afterCursor1 string, afterID int64, sortField string, sortOrder string) (entries []clipboard.Entry, hasMore bool, err error) {
+func (s *Service) GetHistory(search string, tagMask int, afterCursor1 string, afterID int64, sortField string, sortOrder string) (entries []model.Entry, hasMore bool, err error) {
 	pageSize := 20 + 1 // one extra to detect hasMore
 
 	if sortField == "" {
@@ -197,7 +191,7 @@ func (s *Service) GetHistory(search string, tagMask int, afterCursor1 string, af
 		fmts := formatMap[r.ID]
 		text := ""
 		for _, f := range fmts {
-			if f.FormatType == clipboard.CF_UNICODETEXT && f.Content != "" {
+			if f.FormatType == model.CF_UNICODETEXT && f.Content != "" {
 				text = f.Content
 				break
 			}
@@ -205,13 +199,13 @@ func (s *Service) GetHistory(search string, tagMask int, afterCursor1 string, af
 		// Fallback: CF_HDROP path list when CF_UNICODETEXT is absent.
 		if text == "" {
 			for _, f := range fmts {
-				if f.FormatType == clipboard.CF_HDROP && f.Content != "" {
+				if f.FormatType == model.CF_HDROP && f.Content != "" {
 					text = f.Content
 					break
 				}
 			}
 		}
-		entries = append(entries, clipboard.Entry{
+		entries = append(entries, model.Entry{
 			ID:            r.ID,
 			ContentHash:   r.ContentHash,
 			Content:       text,
@@ -230,7 +224,7 @@ func (s *Service) GetHistory(search string, tagMask int, afterCursor1 string, af
 // GetHistoryRegex returns all entries matching a regex pattern.
 // Loads data in batches and filters with Go regexp — no cursor needed since results
 // are typically small subsets of the full history.
-func (s *Service) GetHistoryRegex(pattern string, tagMask int, sortField string, sortOrder string) (entries []clipboard.Entry, err error) {
+func (s *Service) GetHistoryRegex(pattern string, tagMask int, sortField string, sortOrder string) (entries []model.Entry, err error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("invalid regex: %w", err)
@@ -247,7 +241,7 @@ func (s *Service) GetHistoryRegex(pattern string, tagMask int, sortField string,
 	var cursor1 string
 	cursorID := int64(0)
 	batchSize := 200
-	var all []clipboard.Entry
+	var all []model.Entry
 
 	for {
 		page, hasMore, pageErr := s.GetHistory("", tagMask, cursor1, cursorID, sortField, sortOrder)
@@ -289,7 +283,7 @@ func (s *Service) DeleteEntry(id int64) error {
 // UseEntry performs the default action and refreshes updated_at.
 func (s *Service) UseEntry(id int64, action string) error {
 	// Try CF_HDROP (file paths) first — restore as proper file drop.
-	hdropText, _ := s.store.QueryFormatContent(id, clipboard.CF_HDROP)
+	hdropText, _ := s.store.QueryFormatContent(id, model.CF_HDROP)
 	if hdropText != "" {
 		paths := strings.Split(hdropText, "\n")
 		s.store.UpdateTimestamp(id, nowMillis())
@@ -301,7 +295,7 @@ func (s *Service) UseEntry(id int64, action string) error {
 	}
 
 	// Try text.
-	text, _ := s.store.QueryFormatContent(id, clipboard.CF_UNICODETEXT)
+	text, _ := s.store.QueryFormatContent(id, model.CF_UNICODETEXT)
 	if text != "" {
 		s.store.UpdateTimestamp(id, nowMillis())
 		s.clipboard.SetText(text)
@@ -390,7 +384,7 @@ func (s *Service) ClearAll(keepFavorites bool) error {
 
 // GetEntryContent returns the CF_UNICODETEXT content for the given entry ID.
 func (s *Service) GetEntryContent(id int64) (string, error) {
-	return s.store.QueryFormatContent(id, clipboard.CF_UNICODETEXT)
+	return s.store.QueryFormatContent(id, model.CF_UNICODETEXT)
 }
 
 // GetImageList returns all image entry IDs matching the given tag mask and search,
@@ -423,9 +417,9 @@ func (s *Service) GetImageDataURL(entryID int64) (string, error) {
 
 // --- helpers ---
 
-func computeTextLength(formats []clipboard.CapturedFormat) int {
+func computeTextLength(formats []model.CapturedFormat) int {
 	for _, f := range formats {
-		if f.FormatType == clipboard.CF_UNICODETEXT && f.Text != "" {
+		if f.FormatType == model.CF_UNICODETEXT && f.Text != "" {
 			return len(f.Text)
 		}
 	}
@@ -443,10 +437,10 @@ func sha256Hash(text string, raw []byte) string {
 	return fmt.Sprintf("%x", h[:])
 }
 
-func buildEntry(id int64, hash, exe, title, createdAt, updatedAt string, formats []clipboard.CapturedFormat) *clipboard.Entry {
+func buildEntry(id int64, hash, exe, title, createdAt, updatedAt string, formats []model.CapturedFormat) *model.Entry {
 	text := ""
 	for _, f := range formats {
-		if f.FormatType == clipboard.CF_UNICODETEXT {
+		if f.FormatType == model.CF_UNICODETEXT {
 			text = f.Text
 			break
 		}
@@ -454,13 +448,13 @@ func buildEntry(id int64, hash, exe, title, createdAt, updatedAt string, formats
 	// Fallback for CF_HDROP-only entries.
 	if text == "" {
 		for _, f := range formats {
-			if f.FormatType == clipboard.CF_HDROP && f.Text != "" {
+			if f.FormatType == model.CF_HDROP && f.Text != "" {
 				text = f.Text
 				break
 			}
 		}
 	}
-	e := &clipboard.Entry{
+	e := &model.Entry{
 		ID:          id,
 		ContentHash: hash,
 		Content:     text,
@@ -470,7 +464,7 @@ func buildEntry(id int64, hash, exe, title, createdAt, updatedAt string, formats
 		UpdatedAt:   updatedAt,
 	}
 	for _, f := range formats {
-		fe := clipboard.FormatEntry{FormatType: f.FormatType}
+		fe := model.FormatEntry{FormatType: f.FormatType}
 		if f.RawData != nil {
 			fe.Content = fmt.Sprintf("[image %d bytes]", len(f.RawData))
 		} else {

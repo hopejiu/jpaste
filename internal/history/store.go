@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"jpaste/internal/clipboard"
+	"jpaste/internal/model"
 )
 
 // EntryStore abstracts the persistence layer for clipboard entries.
@@ -16,7 +16,7 @@ type EntryStore interface {
 	QueryHistory(search string, tagMask int, afterCursor1 string, afterID int64, limit int, sortField string, sortOrder string) ([]EntryRow, error)
 
 	// LoadFormats returns all formats for the given entry IDs, keyed by entry ID.
-	LoadFormats(ids []int64) (map[int64][]clipboard.FormatEntry, error)
+	LoadFormats(ids []int64) (map[int64][]model.FormatEntry, error)
 
 	// UpsertDedup tries to dedup an existing entry by hash. Returns true if deduped.
 	UpsertDedup(hash, sourceEXE, sourceTitle string, tagMask int, now string, contentLength int) (deduped bool, err error)
@@ -135,7 +135,7 @@ func (s *sqliteStore) QueryHistory(search string, tagMask int, afterCursor1 stri
 	return result, nil
 }
 
-func (s *sqliteStore) LoadFormats(ids []int64) (map[int64][]clipboard.FormatEntry, error) {
+func (s *sqliteStore) LoadFormats(ids []int64) (map[int64][]model.FormatEntry, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -157,10 +157,10 @@ func (s *sqliteStore) LoadFormats(ids []int64) (map[int64][]clipboard.FormatEntr
 	}
 	defer rows.Close()
 
-	m := make(map[int64][]clipboard.FormatEntry)
+	m := make(map[int64][]model.FormatEntry)
 	for rows.Next() {
 		var eid int64
-		var ft clipboard.FormatEntry
+		var ft model.FormatEntry
 		if err := rows.Scan(&eid, &ft.FormatType, &ft.Content, &ft.FilePath); err != nil {
 			continue
 		}
