@@ -210,9 +210,14 @@ func main() {
 			filoStack.Push(textToPush)
 		}
 
-		// Notify after Push so the count reflects the current item.
-		if isNew && sett.GetSettings().NotifyEnabled {
-			contentPreview := previewShort(entry.Content, 10)
+		// Notify（无论是否新内容，重复也弹）。
+		if sett.GetSettings().NotifyEnabled {
+			// CaptureEntry 在去重时返回 nil entry，此时用 data.Formats 中的纯文本兜底。
+			previewSource := entry.Content
+			if entry == nil {
+				previewSource = textToPush
+			}
+			contentPreview := previewShort(previewSource, 10)
 			if filoStack.Enabled() {
 				modeLabel := map[string]string{filostack.ModeStack: "栈", filostack.ModeQueue: "队列"}[filoStack.Mode()]
 				toastSvc.ShowToast("jPaste",

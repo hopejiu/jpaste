@@ -23,10 +23,6 @@ func init() {
 	platformStart = startWindowsMonitor
 }
 
-// ---------------------------------------------------------------------------
-// Constants not in lxn/win
-// ---------------------------------------------------------------------------
-
 const (
 	gmemMoveable      = 0x0002
 	wmClipboardUpdate = 0x031D
@@ -34,16 +30,11 @@ const (
 	wmQuit            = 0x0012
 	processQueryLimit = 0x1000
 
-	// CFDIBV5 is the DIB v5 clipboard format constant.
 	CFDIBV5 = 17
 )
 
 // hwndMessage is HWND_MESSAGE (-3).
 var hwndMessage = win.HWND(^uintptr(2)) // -3
-
-// ---------------------------------------------------------------------------
-// Syscall procs for functions not in lxn/win
-// ---------------------------------------------------------------------------
 
 var (
 	kernel32                          = syscall.NewLazyDLL("kernel32.dll")
@@ -75,10 +66,6 @@ func isTextFormat(f uint32) bool {
 func isImageFormat(f uint32) bool {
 	return f == win.CF_DIB || f == CFDIBV5
 }
-
-// ---------------------------------------------------------------------------
-// Event-driven monitoring via AddClipboardFormatListener
-// ---------------------------------------------------------------------------
 
 func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 	log.Println("[clipboard] Starting WM_CLIPBOARDUPDATE monitor...")
@@ -192,10 +179,6 @@ func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 func clipboardWndProc(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr {
 	return win.DefWindowProc(hwnd, msg, wParam, lParam)
 }
-
-// ---------------------------------------------------------------------------
-// Capture — read all formats + source info from system clipboard
-// ---------------------------------------------------------------------------
 
 func captureAll() CapturedData {
 	if !win.OpenClipboard(0) {
@@ -388,10 +371,6 @@ func utf16BytesToString(data []byte) string {
 	return string(utf16.Decode(u16))
 }
 
-// ---------------------------------------------------------------------------
-// Source application identification
-// ---------------------------------------------------------------------------
-
 func getClipboardSource() (exe, title string) {
 	hwndRaw, _, _ := procGetClipboardOwner.Call()
 	hwnd := win.HWND(hwndRaw)
@@ -553,10 +532,6 @@ func WriteFilePaths(paths []string) bool {
 	log.Printf("[clipboard] WriteFilePaths: wrote %d paths to CF_HDROP", len(paths))
 	return true
 }
-
-// ---------------------------------------------------------------------------
-// Write to system clipboard
-// ---------------------------------------------------------------------------
 
 func WriteText(text string) bool {
 	MarkSelfWrite(text)

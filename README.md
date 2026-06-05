@@ -10,13 +10,13 @@ Windows 剪贴板管理器，基于 Wails v3 + React。
 - **多格式支持** — 文本 (`CF_UNICODETEXT`)、图片 (`CF_DIB`)、文件路径 (`CF_HDROP`)
 - **来源追踪** — 记录每条剪贴板内容的来源应用和窗口标题
 - **标签过滤** — 全部 / 文本 / 图片 / 网址 / 文件 / 收藏，位掩码分类
-- **即时搜索** — 全文搜索 + 正则表达式搜索，支持**更新时间/字符串长度**排序（升降序）
-- **粘贴顺序控制** — 支持三种模式：正常、栈模式（后进先出）、队列模式（先进先出），底部面板一键切换
-- **收藏保护** — 自动清理不会删除收藏条目；清空全部时可选「保留收藏」
+- **即时搜索** — 全文搜索 + 正则表达式搜索，支持更新时间/字符串长度排序（升降序）
+- **粘贴顺序控制** — 三种模式：正常、栈（后进先出）、队列（先进先出），底部面板一键切换
+- **收藏保护** — 自动清理不会删除收藏条目；清空全部时可选保留收藏
 - **内容识别操作** — JSON 查看器、数学计算、Base64 解编码、URL 打开、Unicode 转换
 - **图片查看** — 独立窗口，自适应尺寸，缩放/拖拽，支持 ← → 切换图片
 - **文件路径** — 自动识别路径文本，支持路径文本复制和文件粘贴
-- **WebDAV 同步** — 双向合并（内置坚果云支持）
+- **Toast 通知** — 剪贴板变化时右下角无框通知（支持重复内容通知）
 - **全局热键** — 默认 `Alt+V` 切换窗口显隐
 - **可配置** — 复制/粘贴默认操作、保留天数、自动启动、通知开关、排序偏好
 
@@ -49,10 +49,13 @@ Windows 剪贴板管理器，基于 Wails v3 + React。
 # 安装 Wails CLI
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 
-# 开发模式（热重载）
+# 安装前端依赖
+cd frontend && npm install && cd ..
+
+# 开发模式（热重载前端 + Go）
 wails3 dev
 
-# 构建
+# 生产构建
 wails3 build
 # 输出: bin/jpaste.exe
 ```
@@ -74,28 +77,36 @@ wails3 build
 
 | 层 | 技术 |
 |----|------|
-| 后端 | Go + Wails v3 + SQLite (`modernc.org/sqlite`) |
-| 前端 | React 18 + Vite + React Router + Lucide Icons |
+| 后端 | Go 1.25 + Wails v3 + SQLite (`modernc.org/sqlite`) |
+| 前端 | React 18 + Vite 8 + React Router + Lucide Icons |
 | 剪贴板 | `lxn/win` — Win32 API，格式枚举/来源检测/粘贴模拟 |
+| 热键 | `golang.design/x/hotkey` — 全局键盘钩子 |
 | 存储 | `%APPDATA%/jPaste/clipboard.db` + `%APPDATA%/jPaste/images/` |
-| 同步 | WebDAV（TODO，双向合并） |
-
 ## 架构
 
 ```
-┌─────────────────────────────────────────┐
-│  React 前端 (WebView)                    │
-│  MainPage · SettingsPage  · JsonViewPage │
-│  ImageViewPage                           │
-│          ↕ Wails Bindings                │
-├─────────────────────────────────────────┤
-│  Go 后端                                 │
-│  Clipboard · History  · Sync · Settings  │
-│  FileOp   · ImageStore · JsonViewer      │
-│  SQLite + 图片文件 · WebDAV (TODO)        │
-│  系统托盘 + 全局热键                     │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│  React 前端 (WebView2)                        │
+│  MainPage · SettingsPage · JsonViewPage        │
+│  ImageViewPage ─ ToastPage (独立窗口)          │
+│          ↕ Wails Bindings + Events.Emit        │
+├──────────────────────────────────────────────┤
+│  Go 后端                                      │
+│  Clipboard · History · Sync · Settings         │
+│  FileOp · FiloStack · Hotkey                   │
+│  ImageStore · JsonViewer · ImageViewer         │
+│  Toast (事件驱动通知) · Log (日志中继)          │
+│  SQLite + 图片文件存储                          │
+│  系统托盘 + 全局热键                           │
+└──────────────────────────────────────────────┘
 ```
+
+### 关键设计
+
+- **Toast 通知**: 预创建的隐藏无框窗口，通过离屏定位避免闪烁。WebView2 始终保持渲染，收到事件后移入可视区域，3 秒后移回屏幕外。与主窗口路由完全隔离。
+- **事件系统**: Go 端通过 `app.Event.Emit` 广播事件，前端通过 `@wailsio/runtime` 的 `Events.On` 监听。前端日志通过 `Events.Emit('frontend-log', ...)` 回传后端写入统一日志文件。
+- **剪贴板监控**: 消息窗口 (`HWND_MESSAGE`) + `AddClipboardFormatListener`，无需轮询。
+- **粘贴顺序控制**: 键盘钩子 (`WH_KEYBOARD_LL`) 拦截 Ctrl+V，从内部栈/队列中弹出内容。
 
 ## License
 

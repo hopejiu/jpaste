@@ -3,18 +3,6 @@ import { Search, X, Settings, Code2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import SyncIndicator from './SyncIndicator'
 
-/**
- * Search bar with inline clear button, sync indicator, regex toggle, and settings link.
- *
- * Interface:
- *   search: string
- *   onSearchChange: (term: string) => void
- *   syncStatus: string
- *   inputRef: React.RefObject (optional)
- *   isRegex: boolean
- *   onToggleRegex: (enabled: boolean) => void
- *   styles: object  (searchBox, searchIcon, searchInput, clearBtn, regexBtn, regexBtnActive, settingsBtn)
- */
 export default function SearchBar({ search, onSearchChange, syncStatus, inputRef: externalRef, isRegex, onToggleRegex, styles }) {
   const internalRef = useRef(null)
   const inputRef = externalRef || internalRef

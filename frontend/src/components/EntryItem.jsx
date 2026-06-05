@@ -15,27 +15,6 @@ const extractAppName = (exe) => {
   return parts[parts.length - 1].replace('.exe', '')
 }
 
-/**
- * Single clipboard entry row.
- *
- * Interface:
- *   entry: ClipboardEntry
- *   idx: number
- *   isFocused: boolean
- *   animatingId: number | null
- *   detectedActions: string[]
- *   thumb: { url?: string, loading?: boolean } | undefined
- *   styles: object
- *   onFocus: (idx: number) => void
- *   onSelect: (entry) => void
- *   onImageClick: (entry) => void
- *   onActionClick: (actionId, entry) => void
- *   onCopy: (id) => void
- *   onPaste: (id) => void
- *   onToggleFavorite: (id, value) => void
- *   onContextMenu: (e, entry) => void
- *   observeItem: (el, id, content) => void
- */
 export default function EntryItem({
   entry, idx, isFocused, animatingId,
   detectedActions, thumb, styles,

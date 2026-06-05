@@ -18,9 +18,6 @@ const (
 	ModeStack  = "stack"
 	ModeQueue  = "queue"
 )
-
-// Service implements a paste-order controller: normal / stack (FILO) / queue (FIFO).
-// Only CF_UNICODETEXT is supported.
 type Service struct {
 	mu    sync.Mutex
 	items *list.List
@@ -29,14 +26,10 @@ type Service struct {
 	// hook management
 	hookStop func()
 
-	// self-paste guard: ignore jPaste's own keybd_event Ctrl+V
 	selfPasteUntil time.Time
+	selfWriteHash  string
+	selfWriteTime  time.Time
 
-	// self-write guard: ignore WM_CLIPBOARDUPDATE from our own clipboard writes
-	selfWriteHash string
-	selfWriteTime time.Time
-
-	// callbacks
 	onWriteText func(text string) bool
 	onNotify    func(title, msg string)
 }
@@ -197,8 +190,6 @@ func (s *Service) SetSelfPaste() {
 	s.mu.Unlock()
 }
 
-// --- hook management ---
-
 func (s *Service) startHook() {
 	s.mu.Lock()
 	if s.hookStop != nil {
@@ -257,8 +248,6 @@ func (s *Service) handleHookKey() {
 		return
 	}
 }
-
-// --- helpers ---
 
 func contentHash(s string) string {
 	h := sha256.Sum256([]byte(strings.TrimSpace(s)))
