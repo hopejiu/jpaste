@@ -3,12 +3,12 @@ package filostack
 import (
 	"container/list"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"time"
+
+	"jpaste/internal/util"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -22,6 +22,9 @@ type Service struct {
 	mu    sync.Mutex
 	items *list.List
 	mode  string
+
+	// strategy defines the consumption behavior (stack / queue).
+	strategy PasteStrategy
 
 	// hook management
 	hookStop func()
@@ -49,6 +52,7 @@ func NewService(onWriteText func(text string) bool, opts ...Option) *Service {
 		items:       list.New(),
 		mode:        ModeNormal,
 	}
+	s.updateStrategy()
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -75,6 +79,16 @@ func (s *Service) Mode() string {
 	return s.mode
 }
 
+// ModeName returns a human-readable name for the current paste order mode.
+func (s *Service) ModeName() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.strategy != nil {
+		return s.strategy.ModeName()
+	}
+	return ""
+}
+
 // Enabled returns whether a non-normal mode is active.
 func (s *Service) Enabled() bool {
 	s.mu.Lock()
@@ -92,42 +106,34 @@ func (s *Service) Push(text string) {
 	}
 	// Skip push for self-writes.
 	if s.selfWriteHash != "" && time.Since(s.selfWriteTime) < 5*time.Second {
-		h := contentHash(text)
+		h := util.SHA256String(text)
 		if h == s.selfWriteHash {
 			log.Printf("[filostack] skip self-write push (hash=%s)", h)
 			return
 		}
 	}
 	s.items.PushBack(text)
-	log.Printf("[filostack] push: size=%d, mode=%s, text=%q", s.items.Len(), s.mode, previewText(text))
+	log.Printf("[filostack] push: size=%d, mode=%s, text=%q", s.items.Len(), s.mode, util.TruncateBytes(text, 40))
 }
 
-// Pop removes an item from the list. Direction depends on mode:
+// Pop removes an item from the list. Direction depends on strategy:
 //   - stack: removes from the back (LIFO)
 //   - queue: removes from the front (FIFO)
 //   - normal: always returns false
 func (s *Service) Pop() (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.items.Len() == 0 {
+	if s.items.Len() == 0 || s.strategy == nil {
 		log.Printf("[filostack] pop: empty (mode=%s)", s.mode)
 		return "", false
 	}
-	var e *list.Element
-	var direction string
-	switch s.mode {
-	case ModeStack:
-		e = s.items.Back()
-		direction = "back (stack)"
-	case ModeQueue:
-		e = s.items.Front()
-		direction = "front (queue)"
-	default:
+	e := s.strategy.Pop(s.items)
+	if e == nil {
 		return "", false
 	}
 	val := e.Value.(string)
 	s.items.Remove(e)
-	log.Printf("[filostack] pop: size=%d, from=%s, text=%q", s.items.Len(), direction, previewText(val))
+	log.Printf("[filostack] pop: size=%d, from=%s, text=%q", s.items.Len(), s.strategy.ModeName(), util.TruncateBytes(val, 40))
 	return val, true
 }
 
@@ -162,7 +168,7 @@ func (s *Service) GetItems() []string {
 	items := make([]string, 0, s.items.Len())
 	for e := s.items.Front(); e != nil; e = e.Next() {
 		text := e.Value.(string)
-		items = append(items, previewText(text))
+		items = append(items, util.TruncateBytes(text, 40))
 	}
 	return items
 }
@@ -178,9 +184,10 @@ func (s *Service) SetMode(mode string) {
 	}
 	oldMode := s.mode
 	s.mode = mode
+	s.strategy = newStrategy(mode)
 	s.mu.Unlock()
 
-	log.Printf("[filostack] SetMode: %s → %s", oldMode, mode)
+	log.Printf("[filostack] SetMode: %s → %s (strategy=%v)", oldMode, mode, s.strategy != nil)
 
 	if mode == ModeNormal {
 		s.stopHook()
@@ -195,10 +202,15 @@ func (s *Service) SetMode(mode string) {
 	}
 }
 
+// updateStrategy sets the strategy based on the current mode.
+func (s *Service) updateStrategy() {
+	s.strategy = newStrategy(s.mode)
+}
+
 // MarkSelfWrite records jPaste's own clipboard write.
 func (s *Service) MarkSelfWrite(text string) {
 	s.mu.Lock()
-	s.selfWriteHash = contentHash(text)
+	s.selfWriteHash = util.SHA256String(text)
 	s.selfWriteTime = time.Now()
 	s.mu.Unlock()
 	log.Printf("[filostack] MarkSelfWrite: hash=%s", s.selfWriteHash)
@@ -255,31 +267,15 @@ func (s *Service) handleHookKey() {
 		log.Println("[filostack] hook: no item, letting Ctrl+V pass through")
 		return
 	}
-	log.Printf("[filostack] hook: writing text=%q", previewText(text))
+	log.Printf("[filostack] hook: writing text=%q", util.TruncateBytes(text, 40))
 	s.MarkSelfWrite(text)
 	ok = s.onWriteText(text)
 	log.Printf("[filostack] hook: WriteText returned %v", ok)
 	if ok && s.onNotify != nil {
-		modeLabel := map[string]string{ModeStack: "栈", ModeQueue: "队列"}[s.Mode()]
-		if modeLabel == "" {
-			modeLabel = "?"
-		}
 		// Pop happened above — s.Len() is the remaining count after this paste.
-		s.onNotify("jPaste", fmt.Sprintf("成功粘贴, 当前%s已有: %d 个", modeLabel, s.Len()))
+		s.onNotify("jPaste", fmt.Sprintf("成功粘贴, 当前%s已有: %d 个", s.ModeName(), s.Len()))
 		return
 	}
-}
-
-func contentHash(s string) string {
-	h := sha256.Sum256([]byte(strings.TrimSpace(s)))
-	return fmt.Sprintf("%x", h[:])
-}
-
-func previewText(s string) string {
-	if len(s) > 40 {
-		return s[:40] + "..."
-	}
-	return s
 }
 
 // platformStartHook starts the platform-specific keyboard hook.

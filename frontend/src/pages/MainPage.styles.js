@@ -5,16 +5,6 @@ export const styles = {
     borderBottom: '1px solid var(--color-border)', flexShrink: 0,
     background: 'var(--color-surface)',
   },
-  pinBtn: {
-    width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    border: 'none', background: 'transparent', color: 'var(--color-muted)',
-    cursor: 'pointer', borderRadius: 'var(--radius-md)', outline: 'none',
-    transition: 'color var(--transition-fast), background var(--transition-fast)',
-  },
-  pinBtnActive: {
-    color: 'var(--color-primary)',
-    background: 'var(--color-primary-alpha-08)',
-  },
   searchBox: { flex: 1, position: 'relative', display: 'flex', alignItems: 'center' },
   searchIcon: { position: 'absolute', left: '12px', color: 'var(--color-muted)', pointerEvents: 'none' },
   searchInput: {
@@ -29,12 +19,6 @@ export const styles = {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     border: 'none', background: 'transparent', color: 'var(--color-muted)',
     cursor: 'pointer', borderRadius: 'var(--radius-sm)',
-  },
-  settingsBtn: {
-    width: '40px', height: '40px', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', border: 'none', background: 'transparent',
-    color: 'var(--color-muted)', cursor: 'pointer', borderRadius: 'var(--radius-md)',
-    flexShrink: 0,
   },
   regexBtn: {
     width: '36px', height: '36px', display: 'flex', alignItems: 'center',

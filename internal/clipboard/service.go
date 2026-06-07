@@ -2,15 +2,12 @@ package clipboard
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
-	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"time"
 
 	"jpaste/internal/model"
+	"jpaste/internal/util"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -29,8 +26,7 @@ var (
 // WM_CLIPBOARDUPDATE callbacks can distinguish our own writes from user copies.
 func MarkSelfWrite(text string) {
 	selfWriteMu.Lock()
-	h := sha256.Sum256([]byte(strings.TrimSpace(text)))
-	selfWriteHash = fmt.Sprintf("%x", h[:])
+	selfWriteHash = util.SHA256String(text)
 	selfWriteTime = time.Now()
 	selfWriteMu.Unlock()
 }
@@ -51,8 +47,7 @@ func IsSelfWrite(data model.CapturedData) bool {
 	}
 	for _, f := range data.Formats {
 		if model.IsTextFormat(f.FormatType) {
-			h := sha256.Sum256([]byte(strings.TrimSpace(f.Text)))
-			hx := fmt.Sprintf("%x", h[:])
+			hx := util.SHA256String(f.Text)
 			match := hx == selfWriteHash
 			log.Printf("[clipboard] IsSelfWrite: captured=%s last=%s age=%dms match=%v", hx, selfWriteHash, age, match)
 			return match
@@ -128,30 +123,4 @@ func (w *Watcher) ServiceShutdown() error {
 	}
 	w.started = false
 	return nil
-}
-
-// prependBMPHeader builds a valid BMP from a DIB by prefixing BITMAPFILEHEADER.
-func prependBMPHeader(dib []byte) []byte {
-	headerSize := binary.LittleEndian.Uint32(dib[0:4])
-	bitCount := binary.LittleEndian.Uint16(dib[14:16])
-	clrUsed := binary.LittleEndian.Uint32(dib[32:36])
-
-	var colorTableSize uint32
-	if bitCount <= 8 {
-		if clrUsed == 0 {
-			colorTableSize = uint32(1<<bitCount) * 4
-		} else {
-			colorTableSize = clrUsed * 4
-		}
-	}
-
-	offset := uint32(14 + headerSize + colorTableSize)
-	fileSize := uint32(14 + len(dib))
-
-	buf := make([]byte, 14+len(dib))
-	binary.LittleEndian.PutUint16(buf[0:2], 0x4D42) // 'BM'
-	binary.LittleEndian.PutUint32(buf[2:6], fileSize)
-	binary.LittleEndian.PutUint32(buf[10:14], offset)
-	copy(buf[14:], dib)
-	return buf
 }

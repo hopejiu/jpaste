@@ -1,32 +1,27 @@
 package main
 
 import (
-	"bytes"
 	"embed"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
-	"syscall"
 	"time"
 	"unsafe"
 
 	"jpaste/internal/clipboard"
 	"jpaste/internal/db"
 	"jpaste/internal/events"
-	"jpaste/internal/filostack"
 	"jpaste/internal/fileop"
+	"jpaste/internal/filostack"
 	"jpaste/internal/history"
 	"jpaste/internal/hotkey"
 	"jpaste/internal/imageviewer"
 	"jpaste/internal/jsonviewer"
 	applog "jpaste/internal/log"
 	"jpaste/internal/model"
+	"jpaste/internal/repository"
 	"jpaste/internal/settings"
-	"jpaste/internal/sync"
 	"jpaste/internal/toast"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -65,7 +60,7 @@ func (p *Pinner) IsPinned() bool {
 // clipboardImpl delegates to clipboard package functions.
 type clipboardImpl struct{}
 
-func (c clipboardImpl) SetText(text string) bool    { return clipboard.WriteText(text) }
+func (c clipboardImpl) SetText(text string) bool     { return clipboard.WriteText(text) }
 func (c clipboardImpl) SetImage(dib []byte) bool     { return clipboard.WriteImage(dib) }
 func (c clipboardImpl) SetFiles(paths []string) bool { return clipboard.WriteFilePaths(paths) }
 
@@ -89,6 +84,8 @@ func main() {
 	conn := must(db.Open(appData))
 	defer conn.Close()
 
+	repo := repository.New(conn)
+
 	sett := settings.NewService(appData)
 	if err := sett.Load(); err != nil {
 		applog.Warn("load settings", "error", err)
@@ -99,23 +96,6 @@ func main() {
 
 	// Image store for clipboard images.
 	imageStore := history.NewImageStore(appData)
-
-	// Sync service (WebDAV).
-	syncStore := sync.NewSQLSyncStore(conn)
-	syncSvc := sync.NewService(appData, syncStore, sett, func(name string, data any) {
-		if handle.app != nil {
-			handle.Emit(name, data)
-		}
-	})
-
-	// Helper: truncate text to at most n runes for display.
-	previewShort := func(s string, n int) string {
-		runes := []rune(s)
-		if len(runes) > n {
-			return string(runes[:n]) + "..."
-		}
-		return s
-	}
 
 	// Toast service — pre-created frameless window for clipboard notifications.
 	var toastEmit func(name string, data any)
@@ -139,15 +119,12 @@ func main() {
 	)
 
 	// History service with capture pipeline hooks.
-	entryStore := history.NewSQLiteStore(conn)
+	entryStore := history.NewSQLiteStore(repo)
 	histSvc := history.NewService(entryStore, clipboardImpl{},
 		history.WithPasteFunc(func() { doPaste() }),
 		history.WithEmitFunc(func(name string, data any) { handle.Emit(name, data) }),
 		// Notification is handled in the watcher callback after Push, so count is correct.
 		history.WithNotifyFunc(func(title, msg string) {}),
-		history.WithSyncPushFunc(func(hash string, formats []model.SyncFormat) {
-			syncSvc.PushEntry(sync.PushInput{ContentHash: hash, Formats: formats})
-		}),
 		history.WithImageStore(imageStore),
 	)
 
@@ -181,92 +158,8 @@ func main() {
 		}
 	})
 
-	// Pull remote settings on startup.
-	if remoteSettings, err := syncSvc.PullSettings(); err == nil && remoteSettings != nil {
-		var remote settings.Data
-		if err := json.Unmarshal(remoteSettings, &remote); err == nil {
-			localJSON, _ := json.Marshal(sett.GetSettings())
-			if !bytes.Equal(remoteSettings, localJSON) {
-				sett.SaveSettings(remote)
-				applog.Info("sync: applied remote settings on startup", "retain", remote.RetainDays)
-			} else {
-				applog.Info("sync: remote settings identical, skipped")
-			}
-		}
-	} else if err != nil {
-		applog.Warn("sync: pull settings startup", "error", err)
-	}
-
 	// Watcher — event-driven via WM_CLIPBOARDUPDATE.
-	watcher := clipboard.NewWatcher(func(data model.CapturedData) {
-		applog.Info("capture callback", "formats", len(data.Formats), "hash", data.PrimaryHash[:12], "source", data.SourceEXE)
-		entry, isNew := histSvc.CaptureEntry(data)
-		if isNew {
-			applog.Info("new clipboard entry", "id", entry.ID, "text", previewText(entry.Content), "source", entry.SourceEXE)
-		} else {
-			applog.Info("dedup entry", "hash", data.PrimaryHash[:12])
-		}
-
-		// Push text to FILO stack when stack mode is enabled.
-		stackEnabled := filoStack.Enabled()
-		isSelfWrite := clipboard.IsSelfWrite(data)
-		var textToPush string
-		for _, f := range data.Formats {
-			if model.IsTextFormat(f.FormatType) && f.Text != "" {
-				textToPush = f.Text
-				break
-			}
-		}
-		applog.Info("stack decision",
-			"stackEnabled", stackEnabled,
-			"isSelfWrite", isSelfWrite,
-			"text", previewText(textToPush),
-			"hash", data.PrimaryHash[:12],
-		)
-		if stackEnabled && !isSelfWrite && textToPush != "" {
-			filoStack.Push(textToPush)
-		}
-
-		// When in stack/queue mode, detect non-text captures (images, files)
-		// and auto-exit the mode with a toast.
-		if stackEnabled && !isSelfWrite {
-			hasNonText := false
-			for _, f := range data.Formats {
-				if model.IsImageFormat(f.FormatType) || model.IsHdropFormat(f.FormatType) {
-					hasNonText = true
-					break
-				}
-			}
-			if hasNonText {
-				modeLabel := map[string]string{filostack.ModeStack: "栈", filostack.ModeQueue: "队列"}[filoStack.Mode()]
-				itemCount := filoStack.Len()
-
-				newSettings := sett.GetSettings()
-				newSettings.PasteOrder = "normal"
-				sett.SaveSettings(newSettings)
-
-				toastSvc.ShowToast("jPaste",
-					fmt.Sprintf("检测到非文本内容，已退出%s模式（剩余 %d 项已清空）", modeLabel, itemCount))
-			}
-		}
-
-		// Notify（无论是否新内容，重复也弹）。
-		if sett.GetSettings().NotifyEnabled {
-			// CaptureEntry 在去重时返回 nil entry，此时用 data.Formats 中的纯文本兜底。
-			previewSource := textToPush
-			if entry != nil {
-				previewSource = entry.Content
-			}
-			contentPreview := previewShort(previewSource, 10)
-			if filoStack.Enabled() {
-				modeLabel := map[string]string{filostack.ModeStack: "栈", filostack.ModeQueue: "队列"}[filoStack.Mode()]
-				toastSvc.ShowToast("jPaste",
-					fmt.Sprintf("剪贴板写入: %s, 当前%s已有: %d 个", contentPreview, modeLabel, filoStack.Len()))
-			} else {
-				toastSvc.ShowToast("jPaste", "剪贴板写入: "+contentPreview)
-			}
-		}
-	})
+	watcher := clipboard.NewWatcher(newWatcherHandler(histSvc, filoStack, sett, toastSvc))
 
 	// Create Wails app.
 	app := application.New(application.Options{
@@ -291,7 +184,6 @@ func main() {
 			application.NewService(histSvc),
 			application.NewService(sett),
 			application.NewService(fileSvc),
-			application.NewService(syncSvc),
 			application.NewService(jsonViewerSvc),
 			application.NewService(imageViewerSvc),
 			application.NewService(toastSvc),
@@ -319,13 +211,22 @@ func main() {
 		DisableResize:              true,
 		Hidden:                     true,
 		IgnoreMouseEvents:          true,
-		BackgroundColour:           application.NewRGB(255, 255, 255),
+		BackgroundColour:           application.NewRGBA(0, 0, 0, 0),
+		BackgroundType:             application.BackgroundTypeTransparent,
 		DefaultContextMenuDisabled: true,
 		URL:                        "/toast",
 		Windows: application.WindowsWindow{
 			DisableFramelessWindowDecorations: true,
 			HiddenOnTaskbar:                   true,
+			DisableIcon:                       true,
+			Theme:                             application.Light,
+			BackdropType:                      application.None,
+			GeneralAutofillEnabled:            false,
+			PasswordAutosaveEnabled:           false,
+			ExStyle: int(w32.WS_EX_CONTROLPARENT | w32.WS_EX_TRANSPARENT |
+				w32.WS_EX_NOREDIRECTIONBITMAP | w32.WS_EX_TOPMOST | w32.WS_EX_TOOLWINDOW),
 		},
+		CloseButtonState: application.ButtonHidden,
 	})
 	// Position offscreen while still hidden, THEN show — no center flash,
 	// and WebView2 starts rendering immediately at the offscreen location.
@@ -343,9 +244,15 @@ func main() {
 			applog.Warn("toast: native window handle is zero")
 			return
 		}
-		prevHwnd := w32.GetForegroundWindow()
+
+		// Force popup style — Wails creates with WS_OVERLAPPEDWINDOW which
+		// leaves a classic frame; convert to WS_POPUP to remove it.
+		w32.SetWindowLong(hwnd, w32.GWL_STYLE, w32.WS_POPUP|w32.WS_VISIBLE)
+		w32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
+			w32.SWP_FRAMECHANGED|w32.SWP_NOMOVE|w32.SWP_NOSIZE|w32.SWP_NOZORDER|w32.SWP_NOACTIVATE)
 
 		// Recalculate position (handles monitor / DPI changes).
+		prevHwnd := w32.GetForegroundWindow()
 		hMonitor := w32.MonitorFromPoint(0, 0, w32.MONITOR_DEFAULTTOPRIMARY)
 		var mi w32.MONITORINFO
 		mi.CbSize = uint32(unsafe.Sizeof(mi))
@@ -360,19 +267,14 @@ func main() {
 		padding := 10
 		targetX := int(float64(workW)/scale) - 360 - padding
 		targetY := int(float64(workH)/scale) - 80 - padding
-		applog.Info("toast: positioning", "x", targetX, "y", targetY, "workW", workW, "workH", workH, "scale", scale)
 
 		toastWin.SetPosition(targetX, targetY)
-
-		// Ensure the window is visible after being offscreen.
 		toastWin.Show()
 
 		// Restore focus to whatever the user was working on.
 		if prevHwnd != 0 && prevHwnd != hwnd {
 			w32.SetForegroundWindow(prevHwnd)
 		}
-		style := uint32(w32.GetWindowLong(hwnd, w32.GWL_STYLE))
-		applog.Info("toast style", "style", fmt.Sprintf("0x%08X", style))
 	}
 
 	// hideToastOffscreen moves the window offscreen instead of hiding it,
@@ -380,7 +282,6 @@ func main() {
 	// flash when re-shown.
 	hideToastOffscreen := func() {
 		toastWin.SetPosition(-9999, -9999)
-		applog.Info("toast: window offscreened")
 	}
 
 	// Window is always visible (WebView2 must keep rendering) but positioned
@@ -390,20 +291,21 @@ func main() {
 	//   3. 3s later → position back offscreen
 	// This avoids the WebView2 rendering freeze that occurs on hidden windows.
 	toastEmit = func(name string, data any) {
-		applog.Info("toast: emit start") // T0
+		// Inject current theme so the toast window (separate Wails window,
+		// outside <App> component tree) can apply the correct theme class.
+		if td, ok := data.(toast.ToastData); ok {
+			td.Theme = sett.GetSettings().Theme
+			data = td
+		}
 
 		// Emit to frontend (async delivery via IPC).
 		handle.Emit(name, data)
-		applog.Info("toast: emit done, scheduling show") // T1
 
 		// After a brief delay, show the window and start the auto-hide timer.
 		// The delay is long enough for React to render, short enough to feel instant.
 		time.AfterFunc(30*time.Millisecond, func() {
-			applog.Info("toast: 30ms elapsed, invoking show") // T2
 			application.InvokeSync(func() {
-				applog.Info("toast: InvokeSync enter") // T3
 				showToastWindow()
-				applog.Info("toast: window shown, resetting timer") // T4
 
 				// Reset auto-hide timer on main thread to avoid races.
 				if toastHideTimer != nil {
@@ -414,7 +316,6 @@ func main() {
 						hideToastOffscreen()
 					})
 				})
-				applog.Info("toast: timer reset done") // T5
 			})
 		})
 	}
@@ -469,6 +370,7 @@ func main() {
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "jPaste", Width: 480, MinWidth: 360, Height: 560, MinHeight: 300,
 		Hidden: false, URL: "/",
+		Frameless:                  true,
 		BackgroundColour:           application.NewRGB(248, 250, 252),
 		DefaultContextMenuDisabled: true,
 	})
@@ -496,7 +398,9 @@ func main() {
 		e.Cancel()
 	})
 	win.OnWindowEvent(wailsEvent.Common.WindowLostFocus, func(e *application.WindowEvent) {
-		if pinned { return }
+		if pinned {
+			return
+		}
 		applog.Info("WindowLostFocus: hiding")
 		hideWindow(win)
 	})
@@ -531,9 +435,6 @@ func main() {
 			if handle.app != nil {
 				handle.Emit(events.PasteOrderChanged, new.PasteOrder)
 			}
-		}
-		if data, err := json.Marshal(new); err == nil {
-			syncSvc.PushSettings(data)
 		}
 	})
 
@@ -621,29 +522,6 @@ func setupGlobalHotkey(win application.Window, sett *settings.Service) {
 	})
 }
 
-func runCleanup(histSvc *history.Service, sett *settings.Service) {
-	cfg := sett.GetSettings()
-	if n, err := histSvc.Cleanup(cfg.RetainDays); err != nil {
-		applog.Warn("cleanup", "error", err)
-	} else if n > 0 {
-		applog.Info("cleaned up old entries", "count", n)
-	}
-
-	// Clean up orphaned temp files from previous sessions.
-	tmpDir := filepath.Join(os.Getenv("TEMP"), "jPaste")
-	if entries, err := os.ReadDir(tmpDir); err == nil {
-		cleaned := 0
-		for _, e := range entries {
-			if err := os.RemoveAll(filepath.Join(tmpDir, e.Name())); err == nil {
-				cleaned++
-			}
-		}
-		if cleaned > 0 {
-			applog.Info("cleaned up temp dir", "dir", tmpDir, "count", cleaned)
-		}
-	}
-}
-
 func setupAutostart(app *application.App, sett *settings.Service) {
 	if sett.GetSettings().AutoStart {
 		if err := app.Autostart.Enable(); err != nil {
@@ -687,99 +565,4 @@ func must[T any](val T, err error) T {
 		os.Exit(1)
 	}
 	return val
-}
-
-func previewText(s string) string {
-	if len(s) > 80 {
-		return s[:80] + "..."
-	}
-	return s
-}
-
-// cleanupOrphanedWV2 kills orphaned msedgewebview2 processes — WebView2 child
-// processes whose parent (previous jPaste instance) no longer exists.
-func cleanupOrphanedWV2() {
-	snapshot, err := syscall.CreateToolhelp32Snapshot(syscall.TH32CS_SNAPPROCESS, 0)
-	if err != nil {
-		return
-	}
-	defer syscall.CloseHandle(snapshot)
-
-	// Build: alive PID set, and process info map.
-	alive := make(map[uint32]bool)
-	type procInfo struct {
-		name     string
-		parentPid uint32
-	}
-	info := make(map[uint32]procInfo)
-
-	var pe syscall.ProcessEntry32
-	pe.Size = uint32(unsafe.Sizeof(pe))
-	for ok := syscall.Process32First(snapshot, &pe); ok == nil; ok = syscall.Process32Next(snapshot, &pe) {
-		pid := pe.ProcessID
-		name := syscall.UTF16ToString(pe.ExeFile[:])
-		alive[pid] = true
-		info[pid] = procInfo{name: name, parentPid: pe.ParentProcessID}
-	}
-
-	selfPID := uint32(os.Getpid())
-
-	for pid, pi := range info {
-		if !strings.EqualFold(pi.name, "msedgewebview2.exe") {
-			continue
-		}
-		if pi.parentPid == selfPID {
-			continue // belongs to current instance
-		}
-		if alive[pi.parentPid] {
-			continue // parent still alive — not orphaned
-		}
-		// Orphaned — terminate it.
-		h, err := syscall.OpenProcess(syscall.PROCESS_TERMINATE, false, pid)
-		if err != nil {
-			continue
-		}
-		syscall.TerminateProcess(h, 0)
-		syscall.CloseHandle(h)
-		applog.Info("cleaned orphaned WebView2 process", "pid", pid, "parent", pi.parentPid)
-	}
-}
-
-func acquireLock(appData string) bool {
-	lockFilePath = filepath.Join(appData, "instance.lock")
-	os.MkdirAll(appData, 0700)
-	data, err := os.ReadFile(lockFilePath)
-	if err == nil {
-		if pid, parseErr := strconv.Atoi(string(data)); parseErr == nil && pid > 0 && isProcessAlive(pid) {
-			return false
-		}
-		os.Remove(lockFilePath)
-	}
-	pid := os.Getpid()
-	if writeErr := os.WriteFile(lockFilePath, []byte(strconv.Itoa(pid)), 0600); writeErr != nil {
-		applog.Warn("write lock file", "error", writeErr)
-		return true
-	}
-	return true
-}
-
-func releaseLock() {
-	if lockFilePath != "" {
-		os.Remove(lockFilePath)
-	}
-}
-
-func isProcessAlive(pid int) bool {
-	const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-	h, err := syscall.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
-	if err != nil {
-		return false
-	}
-	defer syscall.CloseHandle(h)
-	var exitCode uint32
-	err = syscall.GetExitCodeProcess(h, &exitCode)
-	if err != nil {
-		return false
-	}
-	return exitCode == 259
 }

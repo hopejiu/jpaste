@@ -1,7 +1,6 @@
 package history
 
 import (
-	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"log"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"jpaste/internal/model"
+	"jpaste/internal/util"
 )
 
 // Service provides clipboard history queries and actions.
@@ -21,7 +21,6 @@ type Service struct {
 	performPaste func()
 	onEmit       func(name string, data any)
 	onNotify     func(title, msg string)
-	onSyncPush   func(contentHash string, formats []model.SyncFormat)
 }
 
 // ClipboardWriter abstracts clipboard write operations.
@@ -42,9 +41,6 @@ func WithEmitFunc(fn func(name string, data any)) Option {
 }
 func WithNotifyFunc(fn func(title, msg string)) Option {
 	return func(s *Service) { s.onNotify = fn }
-}
-func WithSyncPushFunc(fn func(contentHash string, formats []model.SyncFormat)) Option {
-	return func(s *Service) { s.onSyncPush = fn }
 }
 func WithImageStore(is ImageStorer) Option {
 	return func(s *Service) { s.imageStore = is }
@@ -91,7 +87,6 @@ func (s *Service) CaptureEntry(data model.CapturedData) (*model.Entry, bool) {
 				log.Printf("[history] dedup err: %v", err)
 			}
 			if deduped {
-				s.pushToSync(data.PrimaryHash, data.Formats)
 				return nil, false
 			}
 		}
@@ -116,15 +111,14 @@ func (s *Service) CaptureEntry(data model.CapturedData) (*model.Entry, bool) {
 		s.onEmit("clipboard-updated", *entry)
 	}
 	if s.onNotify != nil {
-		s.onNotify("jPaste", previewText(entry.Content))
+		s.onNotify("jPaste", util.TruncateBytes(entry.Content, 80))
 	}
-	s.pushToSync(data.PrimaryHash, data.Formats)
 
 	return entry, true
 }
 
 func (s *Service) saveFormat(entryID int64, f model.CapturedFormat, today string) {
-	h := sha256Hash(f.Text, f.RawData)
+	h := util.SHA256TextOrRaw(f.Text, f.RawData)
 
 	if f.RawData != nil && model.IsImageFormat(f.FormatType) {
 		if s.imageStore == nil {
@@ -140,21 +134,6 @@ func (s *Service) saveFormat(entryID int64, f model.CapturedFormat, today string
 	}
 }
 
-func (s *Service) pushToSync(hash string, formats []model.CapturedFormat) {
-	if s.onSyncPush == nil {
-		return
-	}
-	var sf []model.SyncFormat
-	for _, f := range formats {
-		if f.Text != "" && !model.IsHdropFormat(f.FormatType) {
-			sf = append(sf, model.SyncFormat{FormatType: f.FormatType, Content: f.Text})
-		}
-	}
-	if len(sf) > 0 {
-		s.onSyncPush(hash, sf)
-	}
-}
-
 // GetHistory returns entries with cursor-based pagination and tag filtering.
 // tagMask=0 means all, afterCursor1="" means first page.
 // tagMask bit 5 (value 32) triggers favorites-only filter.
@@ -162,13 +141,7 @@ func (s *Service) pushToSync(hash string, formats []model.CapturedFormat) {
 func (s *Service) GetHistory(search string, tagMask int, afterCursor1 string, afterID int64, sortField string, sortOrder string) (entries []model.Entry, hasMore bool, err error) {
 	pageSize := 20 + 1 // one extra to detect hasMore
 
-	if sortField == "" {
-		sortField = "updated_at"
-	}
-	if sortOrder == "" {
-		sortOrder = "DESC"
-	}
-	sortOrder = strings.ToUpper(sortOrder)
+	sortField, sortOrder = resolveSortParams(sortField, sortOrder)
 
 	rows, err := s.store.QueryHistory(search, tagMask, afterCursor1, afterID, pageSize, sortField, sortOrder)
 	if err != nil {
@@ -230,13 +203,7 @@ func (s *Service) GetHistoryRegex(pattern string, tagMask int, sortField string,
 		return nil, fmt.Errorf("invalid regex: %w", err)
 	}
 
-	if sortField == "" {
-		sortField = "updated_at"
-	}
-	if sortOrder == "" {
-		sortOrder = "DESC"
-	}
-	sortOrder = strings.ToUpper(sortOrder)
+	sortField, sortOrder = resolveSortParams(sortField, sortOrder)
 
 	var cursor1 string
 	cursorID := int64(0)
@@ -426,17 +393,6 @@ func computeTextLength(formats []model.CapturedFormat) int {
 	return 0
 }
 
-func sha256Hash(text string, raw []byte) string {
-	var input []byte
-	if len(raw) > 0 {
-		input = raw
-	} else {
-		input = []byte(text)
-	}
-	h := sha256.Sum256(input)
-	return fmt.Sprintf("%x", h[:])
-}
-
 func buildEntry(id int64, hash, exe, title, createdAt, updatedAt string, formats []model.CapturedFormat) *model.Entry {
 	text := ""
 	for _, f := range formats {
@@ -475,9 +431,16 @@ func buildEntry(id int64, hash, exe, title, createdAt, updatedAt string, formats
 	return e
 }
 
-func previewText(s string) string {
-	if len(s) > 80 {
-		return s[:80] + "..."
+// resolveSortParams returns validated sort field and order, applying defaults if empty.
+func resolveSortParams(sortField, sortOrder string) (field, order string) {
+	if sortField == "" {
+		sortField = "updated_at"
 	}
-	return s
+	if sortOrder == "" {
+		sortOrder = "DESC"
+	}
+	return sortField, strings.ToUpper(sortOrder)
 }
+
+
+

@@ -65,12 +65,6 @@ type CapturedData struct {
 	PrimaryHash string // SHA-256 of CF_UNICODETEXT, or image bytes if text is absent
 }
 
-// SyncFormat is a text format payload for sync push.
-type SyncFormat struct {
-	FormatType uint32 `json:"t"`
-	Content    string `json:"c"`
-}
-
 // ---------------------------------------------------------------------------
 // Tag / format helper functions
 // ---------------------------------------------------------------------------

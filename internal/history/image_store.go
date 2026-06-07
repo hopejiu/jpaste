@@ -2,12 +2,13 @@ package history
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"image"
 	"image/png"
 	"os"
 	"path/filepath"
+
+	"jpaste/internal/util"
 
 	"github.com/google/uuid"
 	_ "golang.org/x/image/bmp"
@@ -49,7 +50,7 @@ func (s *ImageStore) Save(raw []byte, today string) (string, error) {
 
 	// DIB = BITMAPINFOHEADER + [color table] + pixel data
 	// Prepend BITMAPFILEHEADER to make a valid BMP.
-	bmpData := prependBMPHeader(raw)
+	bmpData := util.PrependBMPHeader(raw)
 
 	img, _, err := image.Decode(bytes.NewReader(bmpData))
 	if err != nil {
@@ -166,36 +167,3 @@ func (s *ImageStore) CleanEmptyDirs() {
 	}
 }
 
-// prependBMPHeader builds a valid BMP from a DIB by prefixing BITMAPFILEHEADER.
-func prependBMPHeader(dib []byte) []byte {
-	// BITMAPFILEHEADER: 14 bytes
-	//   bfType      uint16 = 'BM' (0x4D42)
-	//   bfSize      uint32 = total file size
-	//   bfReserved1 uint16 = 0
-	//   bfReserved2 uint16 = 0
-	//   bfOffBits   uint32 = 14 + 40 + colorTableSize
-	headerSize := binary.LittleEndian.Uint32(dib[0:4]) // biSize
-	bitCount := binary.LittleEndian.Uint16(dib[14:16])
-	clrUsed := binary.LittleEndian.Uint32(dib[32:36])
-
-	var colorTableSize uint32
-	if bitCount <= 8 {
-		if clrUsed == 0 {
-			colorTableSize = uint32(1<<bitCount) * 4
-		} else {
-			colorTableSize = clrUsed * 4
-		}
-	}
-
-	offset := uint32(14 + headerSize + colorTableSize)
-	fileSize := uint32(14 + len(dib))
-
-	buf := make([]byte, 14+len(dib))
-	binary.LittleEndian.PutUint16(buf[0:2], 0x4D42) // 'BM'
-	binary.LittleEndian.PutUint32(buf[2:6], fileSize)
-	// Reserved: [6:10] zero
-	binary.LittleEndian.PutUint32(buf[10:14], offset)
-	copy(buf[14:], dib)
-
-	return buf
-}

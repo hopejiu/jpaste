@@ -11,12 +11,13 @@ import (
 	"log"
 	"runtime"
 	"strings"
-	"time"
 	"syscall"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 
 	"jpaste/internal/model"
+	"jpaste/internal/util"
 
 	"github.com/lxn/win"
 )
@@ -280,7 +281,7 @@ func imagePixelHash(dib []byte) []byte {
 	if len(dib) < 40 {
 		return dib
 	}
-	bmpData := prependBMPHeader(dib)
+	bmpData := util.PrependBMPHeader(dib)
 	img, _, err := image.Decode(bytes.NewReader(bmpData))
 	if err != nil {
 		return dib

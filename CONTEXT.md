@@ -31,7 +31,7 @@ A **Paste Order** sub-mode (`paste_order: "stack"`). Items are consumed from the
 A **Paste Order** sub-mode (`paste_order: "queue"`). Items are consumed from the front of the list — FIFO (First In, First Out). Copy order `1,2,3,4,5` → paste order `1,2,3,4,5`.
 
 ### Image Store
-An external file directory at `%APPDATA%/jPaste/images/{YYYY-MM-DD}/` for storing clipboard image payloads. Organized by date folders for easy cleanup — when expired entries are deleted, the corresponding date folders and image files are removed together. Images are excluded from WebDAV sync.
+An external file directory at `%APPDATA%/jPaste/images/{YYYY-MM-DD}/` for storing clipboard image payloads. Organized by date folders for easy cleanup — when expired entries are deleted, the corresponding date folders and image files are removed together.
 
 ### Search Sort Order
 A user preference persisted in `settings.json` (`sort_field`, `sort_order`) controlling the order of clipboard history results. Two sort fields: `updated_at` (last-updated time) and `content_length` (byte length of `CF_UNICODETEXT` content, stored as a redundant column on `clipboard_entry`). Each supports `DESC` (default) and `ASC`. Image-only entries have `content_length = 0`. The sort selector is a dropdown in the search bar; changing it resets pagination and reloads from the first page.
@@ -49,7 +49,7 @@ The five capture-time tags:
 | `file` | 16 | Has `CF_HDROP`, or text matches Windows path pattern (`[A-Z]:\` or `\\`) |
 
 ### Favorite
-A user-assigned marker, independent of capture-time tags. Stored as `is_favorite BOOLEAN DEFAULT 0` on `clipboard_entry` — a separate column from `tag_mask` because the user's manual choice must survive automated capture-time tag recomputation. The list page provides a **Favorite Tab** (`TAG_FAVORITE`, virtual tag bit 32) alongside the auto-classification tabs. Filtering uses `WHERE is_favorite = 1` or a dedicated backend query, not the `tag_mask` bitmask. Sync: `is_favorite` is included in the remote entry JSON and merged alongside `updated_at` — local always wins for this field to avoid remote overwrites of user intent. |
+A user-assigned marker, independent of capture-time tags. Stored as `is_favorite BOOLEAN DEFAULT 0` on `clipboard_entry` — a separate column from `tag_mask` because the user's manual choice must survive automated capture-time tag recomputation. The list page provides a **Favorite Tab** (`TAG_FAVORITE`, virtual tag bit 32) alongside the auto-classification tabs. Filtering uses `WHERE is_favorite = 1` or a dedicated backend query, not the `tag_mask` bitmask. |
 
 ### Tag Mask
 A bitmask stored on `clipboard_entry.tag_mask` (INTEGER) encoding an entry's **Entry Tags**. Multiple tags are combined via bitwise OR (e.g., a URL copy: `1 | 8 = 9`). The list page filters by passing a `tagMask` to `GetHistory`; the backend uses `tag_mask & tagMask != 0` for matching. A `tagMask` of 0 means "no filter" (show all).
@@ -73,71 +73,78 @@ How long clipboard entries are kept before automatic cleanup. Default: 30 days. 
 A separate Wails window opened for structured JSON viewing and editing. When a clipboard entry is detected as valid JSON and the user clicks "查看 JSON", the `jsonviewer.Service` calls the create-window callback with `/json-view?id=<entryID>`. The front-end `JsonViewPage` parses the `id` query parameter and retrieves the entry content via the `HistoryService.GetEntryContent(entryId)` binding, then renders it with the [jsoneditor](https://github.com/josdejong/jsoneditor) component in `tree` mode with optional `code` (Ace editor) mode toggle. The editor supports full CRUD operations, undo/redo, search, sort, drag-and-drop, and JSON formatting. The JSON viewer window is independent — it can stay open while the user continues using the main window.
 
 ### Toast
-A small frameless Wails window shown at the bottom-right of the primary screen when new clipboard content is captured. White background (same as JSON viewer initial state), 360×80. Appears with 200ms fade-in, stays for ~2.6s, exits with 150ms fade-out. IgnoreMouseEvents + no focus steal. Uses a token-store pattern: Go stores `{title, message}` keyed by a random hex token, the window URL is `/toast?token=X`, and the front-end retrieves the payload via `toast.Service.GetToastData(token)` binding.
+A small frameless Wails window shown at the bottom-right of the primary screen when new clipboard content is captured. Appears with 200ms fade-in, stays for ~2.6s, exits with 150ms fade-out. IgnoreMouseEvents + no focus steal. Uses an event-driven pattern: Go emits `toast-notification` with `{title, message}`, and the pre-created toast window's frontend listens directly.
+
+**Theme-adaptive**: The toast window loads the current theme independently via `SettingsService.GetSettings()` and renders a frosted-glass card using the CSS custom property `--toast-glass-bg` (defined per theme in `style.css`). The icon uses `--color-primary`, title uses `--color-foreground`, subtitle uses `--color-muted` — ensuring visual consistency with the user's selected theme. Runs outside the main `<App>` component tree (no MemoryRouter), rendered directly in `main.jsx` for the `/toast` route.
 
 ### Temporary File
 A `.txt` file created in `%TEMP%` with the selected entry's content, then opened in the user's preferred text editor (VS Code first, then system default).
 
-### WebDAV Sync
-Bidirectional merge of clipboard entries and settings across machines via WebDAV (e.g., 坚果云). Each machine runs a push/pull cycle independently; no central coordinator.
-
-**Entry File**: A per-`content_hash` JSON file on WebDAV stored at `entries/{2-char-prefix}/{hash}.json`. Content: `{content, created_at, updated_at}`. Files are sharded into 256 prefix directories to avoid large flat directories.
-
-**Merge Rule**: `content_hash` is the identity key. When a local entry and its remote counterpart exist, keep the one with the later `updated_at`. Local entries not on remote are pushed; remote entries not in local are pulled (subject to `retain_days` filter).
-
-**Push**: On each clipboard change, the new/updated entry is `PUT` immediately. Failure triggers exponential backoff (1min → 2min → 4min → ...). During push, entries on WebDAV older than `retain_days` are deleted — since `retain_days` is shared via settings sync, both machines agree on the deletion boundary. Only text-based formats are synced; image formats are excluded.
-
-**Pull**: Every 60 seconds, a `PROPFIND` on the `entries/` directory lists remote files with `getlastmodified`. Each is compared against local SQLite by `content_hash` + `updated_at`. Only new or changed entries are `GET`-downloaded and upserted. Settings are only pulled once at startup, not on the periodic cycle. Image formats are local-only and never pulled.
-
-**WebDAV Credentials**: Stored in `%APPDATA%/jPaste/webdav.json` (URL, username, app password). Not synced — each machine configures its own.
-
-**Offline**: Push failures increment a backoff counter and show a sync status indicator (green/grey/yellow/red). Pull continues on its fixed 60-second cycle regardless — if unreachable, it silently skips until the next cycle.
-
-**Sync Status**: A small indicator in the main page header showing four states: green ✓ (synced), yellow ⟳ (syncing), grey — (not configured), red ⚠ (error, with tooltip showing last error).
-
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────┐
-│  React Frontend (WebView)                              │
-│  ┌────────────┐ ┌──────────────┐ ┌──────────────────┐ │
-│  │  MainPage   │ │ SettingsPage │ │ JsonViewPage (*) │ │
-│  └────────────┘ └──────────────┘ └──────────────────┘ │
-│         ↕ Wails Bindings         ↕ (separate window)  │
-├──────────────────────────────────────────────────────┤
-│  Go Backend                                            │
-│  ┌──────────┐ ┌───────────────┐  ┌─────────────────┐  │
-│  │Clipboard │ │ HistoryService│  │  JsonViewerSvc  │  │
-│  │ Service  │ │               │  │  window create) │  │
-│  │(lxn/win) │ └───────────────┘  └─────────────────┘  │
-│  └──────────┘ ┌───────────────┐  └─────────────────┘  │
-│               │ ImageStore    │                       │
-│  ┌──────────┐ └───────────────┘                       │
-│  │Settings  │ ┌───────────────┐                       │
-│  │ Service  │ │ FileService   │                       │
-│  └──────────┘ └───────────────┘                       │
-│  ┌──────────┐                                         │
-│  │  Sync    │                                         │
-│  │ Service  │                                         │
-│  └──────────┘                                         │
-│  ┌───────────────────────────────────────────────┐    │
-│  │ SQLite + settings + webdav                    │    │
-│  └───────────────────────────────────────────────┘    │
-│  ┌───────────────────────────────────────────────┐    │
-│  │ System Tray + Global Hotkey                   │    │
-│  └───────────────────────────────────────────────┘    │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  React Frontend (WebView)                                  │
+│  ┌────────────┐ ┌──────────────┐ ┌────────────────────┐   │
+│  │  MainPage   │ │ SettingsPage │ │ JsonViewPage (*)   │   │
+│  └────────────┘ └──────────────┘ └────────────────────┘   │
+│         ↕ Wails Bindings         ↕ (separate window)      │
+├──────────────────────────────────────────────────────────┤
+│  Go Backend                                                │
+│  ┌──────────┐ ┌─────────────────┐  ┌───────────────────┐  │
+│  │Clipboard │ │ HistoryService  │  │  JsonViewerSvc    │  │
+│  │ Watcher  │ │ (EntryStore)    │  │  ImageViewerSvc   │  │
+│  │(lxn/win) │ └─────────────────┘  └───────────────────┘  │
+│  └──────────┘ ┌─────────────────┐  ┌───────────────────┐  │
+│               │ ImageStore      │  │  FiloStackService │  │
+│               │ (ImageStorer)   │  │  (Strategy: Stack │  │
+│  ┌──────────┐ └─────────────────┘  │   / Queue)       │  │
+│  │Settings  │ ┌─────────────────┐  └───────────────────┘  │
+│  │ Service  │ │ FileService     │                         │
+│  └──────────┘ └─────────────────┘                         │
+│  ┌──────────────────┐ ┌──────────────────┐                │
+│  │ ToastService     │ │ System Tray +    │                │
+│  │ (event-driven)   │ │ Global Hotkey    │                │
+│  └──────────────────┘ └──────────────────┘                │
+│  ┌───────────────────────────────────────────────────┐    │
+│  │ internal/repository (single SQLite access layer)  │    │
+│  │ internal/util (hashutil, textutil, dibutil)       │    │
+│  └───────────────────────────────────────────────────┘    │
+│  ┌───────────────────────────────────────────────────┐    │
+│  │ SQLite + settings.json                            │    │
+│  └───────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────┘
 
-(*) JsonViewPage runs in a separate Wails window (title: "JSON 查看"),
-    created on demand by jsonviewer.Service.
+(*) JsonViewPage / ImageViewPage run in separate Wails windows,
+    created on demand by jsonviewer.Service / imageviewer.Service.
 ```
+
+## Design Patterns Used
+
+| Pattern | Location | Usage |
+|---------|----------|-------|
+| **Repository** | `internal/repository/` | Single `Repository` struct owns ALL SQLite queries. `history.EntryStore` is a thin adapter wrapping the `Repository` instance. |
+| **Strategy** | `internal/filostack/` | `PasteStrategy` interface with `StackStrategy` (LIFO) and `QueueStrategy` (FIFO) implementations. The `Service.Pop()` delegates to the strategy instead of switch-on-mode. |
+| **Functional Options** | `internal/history/`, `internal/fileop/`, `internal/filostack/` | `WithPasteFunc`, `WithEmitFunc`, `WithNotifyFunc`, `WithImageStore`, `WithOpenFileManager` etc. — type-safe optional service configuration without builder boilerplate. |
+| **Interface Segregation** | `internal/history/store.go` | `EntryStore` interface abstracts SQLite; tests use in-memory fakes. `ImageStorer` separates image I/O from DB. |
+| **Event-Driven** | `internal/toast/`, `internal/events/` | Go emits Wails custom events (`toast-notification`, `clipboard-updated`); front-end listens via `Events.On()`. |
+| **Observer** | `internal/settings/` | `OnHotkeyChange` / `OnSettingsChange` callbacks notify dependents when settings mutate. |
+| **Template Method** | `internal/history/service.go` | `resolveSortParams` — shared helper extracted from duplicate sort-field resolution in `GetHistory` and `GetHistoryRegex`. |
+| **Utility Module** | `internal/util/` | Consolidates SHA256 hashing (`SHA256Hex`, `SHA256String`, `SHA256TextOrRaw`), text truncation (`Truncate`, `TruncateBytes`), and DIB/BMP header prepending (`PrependBMPHeader`), eliminating cross-package code duplication. |
+
+## Source File Layout
+
+| File | Purpose |
+|------|---------|
+| `main.go` | Entry point: bootstrap, service wiring, window creation, event loop. Remains lean by delegating to helpers. |
+| `main_helpers.go` | `watcherHandler`, `cleanupOrphanedWV2`, lock-file routines, `runCleanup`, `previewText` — extracted logic that reduces main.go to orchestrator-only concerns. |
 
 ## Storage
 
 - **Clipboard history:** `%APPDATA%/jPaste/clipboard.db` (SQLite)
   - `clipboard_entry`: id, content_hash, source_exe, source_title, tag_mask, is_favorite, created_at, updated_at
   - `clipboard_format`: entry_id (FK), format_type, content (TEXT, nullable), file_path (nullable), format_hash
-- **Images:** `%APPDATA%/jPaste/images/{YYYY-MM-DD}/{uuid}.png` — excluded from sync
+- **Images:** `%APPDATA%/jPaste/images/{YYYY-MM-DD}/{uuid}.png`
 - **User settings:** `%APPDATA%/jPaste/settings.json`
 
 ### Action Module
