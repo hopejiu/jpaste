@@ -8,14 +8,13 @@ import { log } from '../logger'
 import { getAll } from '../actions'
 import { formatBytes } from '../utils/format'
 import ToggleSwitch from '../components/ToggleSwitch'
-import { styles } from './SettingsPage.styles'
 
 const MODS = ['Ctrl', 'Alt', 'Shift', 'Win']
 
 const THEMES = [
   { id: 'a', label: '冷调极简', desc: '青碧主色 · 清爽高效', colors: ['#0D9488', '#F0FDFA', '#FFFFFF'] },
-  { id: 'b', label: '暖调高效', desc: 'Indigo 经典 · 生产力优先', colors: ['#6366F1', '#F8FAFC', '#FFFFFF'] },
-  { id: 'c', label: '深色沉浸', desc: '暗色氛围 · 夜间友好', colors: ['#5E6AD2', '#0F0F1A', '#1A1A2E'] },
+  { id: 'b', label: '靛蓝专注', desc: 'Indigo 经典 · 生产力优先', colors: ['#6366F1', '#F8FAFC', '#FFFFFF'] },
+  { id: 'c', label: '深色沉浸', desc: '暗色氛围 · 夜间友好', colors: ['#6C78E0', '#0A0A0A', '#141414'] },
 ]
 
 function parseHotkey(hotkey) {
@@ -70,6 +69,9 @@ export default function SettingsPage() {
     setHotkeyError('')
   }, [settings])
 
+  // Hover state for radio labels
+  const [hoveredRadio, setHoveredRadio] = useState(null)
+
   const handleSave = useCallback(async (updates) => {
     const current = localRef.current
     const updated = { ...current, ...updates }
@@ -78,14 +80,11 @@ export default function SettingsPage() {
       await saveSettings(updated)
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
-      // Clear hotkey error on successful save.
       if (updates.hotkey !== undefined) setHotkeyError('')
-      // Reload when theme changes so the new theme applies to all windows.
       if (updates.theme && updates.theme !== settings.theme) {
         window.location.reload()
       }
     } catch (err) {
-      // Hotkey registration failed — revert to last good settings.
       if (updates.hotkey !== undefined) {
         const raw = err.message || ''
         let msg = raw
@@ -103,7 +102,6 @@ export default function SettingsPage() {
   }, [saveSettings, settings.theme])
 
   const updateHotkey = useCallback((newMods, newKey) => {
-    // Prevent empty hotkey: require at least one mod when key is empty.
     if (newMods.length === 0 && !newKey) return
     log.debug('SettingsPage', 'updateHotkey', { mods: newMods, key: newKey })
     setMods(newMods)
@@ -133,7 +131,7 @@ export default function SettingsPage() {
     if (val) updateHotkey(mods, val)
   }
 
-  // Pre-compute sorted action modules (replaces JSX IIFE).
+  // Pre-compute sorted action modules.
   const sortedActions = useMemo(() => {
     const cfg = local.action_config || {}
     return [...getAll()].sort((a, b) => {
@@ -162,12 +160,10 @@ export default function SettingsPage() {
     setShowClearModal(false)
     setClearing(true)
     try {
-      // Timeout safety: avoid UI freeze if backend hangs.
       await Promise.race([
         clearAll(keepFavorites),
         new Promise((_, reject) => setTimeout(() => reject(new Error('clearAll timeout')), 10000)),
       ])
-      // Fetch real stats after deletion (some entries may remain if keepFavorites).
       HistoryService.GetStats().then(s => { if (s) setStats(s) }).catch(() => {})
     } catch (err) {
       log.error('SettingsPage', 'ClearAll failed:', err)
@@ -184,38 +180,52 @@ export default function SettingsPage() {
 
   const displayKey = [mods.join('+'), key].filter(Boolean).join(' + ')
 
+  const settingGroups = [
+    {
+      items: [
+        { key: 'notify_enabled', label: '剪贴板通知', desc: '捕获到新剪贴板内容时显示通知' },
+        { key: 'auto_start', label: '开机自启', desc: '登录时自动启动 jPaste' },
+        { key: 'start_minimized', label: '启动时最小化', desc: '启动后最小化到系统托盘（不弹出窗口）' },
+      ]
+    }
+  ]
+
   return (
-    <div style={styles.container} tabIndex={0}>
-      <div style={styles.header}>
-        <button style={styles.backBtn} onClick={() => navigate('/')}>
+    <div className="flex flex-col h-screen outline-none animate-[slideDown_200ms_ease-out] bg-surface" tabIndex={0}>
+      {/* Header */}
+      <div className="flex items-center px-4 py-3 gap-3 border-b border-border flex-shrink-0">
+        <button className="w-9 h-9 flex items-center justify-center border-none bg-transparent text-foreground cursor-pointer rounded-md transition-[background] duration-fast hover:bg-surface-hover" onClick={() => navigate('/')}>
           <ArrowLeft size={20} />
         </button>
-        <h2 style={styles.title}>设置</h2>
-        {saved && <span style={styles.savedBadge}>已保存</span>}
+        <h2 className="text-xl font-semibold flex-1">设置</h2>
+        {saved && (
+          <span className="text-xs font-medium px-2.5 py-1 rounded-full" style={{ color: '#4ADE80', background: 'rgba(74,222,128,0.12)' }}>
+            已保存
+          </span>
+        )}
       </div>
 
-      <div style={styles.content}>
+      <div className="flex-1 overflow-y-auto px-0">
         {/* Hotkey */}
-        <div style={styles.group}>
-          <div style={styles.label}>全局快捷键</div>
-          <div style={styles.desc}>显示/隐藏 jPaste 窗口</div>
-          <div style={styles.modRow}>
+        <div className="px-4 py-5 border-b border-border">
+          <div className="text-base font-medium text-foreground mb-0.5">全局快捷键</div>
+          <div className="text-xs text-muted mt-0.5">显示/隐藏 jPaste 窗口</div>
+          <div className="flex gap-2 mt-3">
             {MODS.map(m => {
               const active = mods.includes(m)
               const hovered = hoveredMod === m
-              const chipStyle = {
-                ...styles.modChip,
-                ...(active ? {
-                  border: '1px solid var(--color-primary)',
-                  color: 'var(--color-primary)',
-                  background: hovered ? 'var(--color-primary-alpha-12)' : 'var(--color-primary-alpha-08)',
-                } : {}),
-              }
               return (
                 <button
                   key={m}
                   tabIndex={-1}
-                  style={chipStyle}
+                  className="px-3.5 py-1.5 text-sm font-medium border rounded-md cursor-pointer font-inherit transition-all duration-fast outline-none"
+                  style={{
+                    borderColor: active ? 'var(--color-primary)' : 'var(--color-border)',
+                    color: active ? 'var(--color-primary)' : 'var(--color-muted)',
+                    background: active
+                      ? hovered ? 'var(--color-primary-alpha-12)' : 'var(--color-primary-alpha-08)'
+                      : 'var(--color-surface)',
+                  }}
                   onClick={() => toggleMod(m)}
                   onMouseEnter={() => setHoveredMod(m)}
                   onMouseLeave={() => setHoveredMod(null)}
@@ -225,43 +235,50 @@ export default function SettingsPage() {
               )
             })}
           </div>
-          <div style={{ ...styles.label, marginTop: '12px' }}>按键</div>
+          <div className="text-base font-medium text-foreground mt-3 mb-1">按键</div>
           <input
-            style={styles.keyInput}
+            className="w-20 h-9 mt-1 text-center text-lg font-semibold border border-border rounded-md bg-surface text-foreground outline-none font-inherit"
             value={key}
             onChange={handleKeyInput}
-            placeholder="输入字母..."
+            placeholder="输入..."
             maxLength={1}
           />
-          <div style={styles.hotkeyPreview}>{displayKey || '未设置'}</div>
-          {hotkeyError && <div style={styles.hotkeyError}>{hotkeyError}</div>}
+          <div className="mt-2.5 text-sm text-muted font-mono">{displayKey || '未设置'}</div>
+          {hotkeyError && <div className="mt-2 text-xs text-destructive leading-[1.4]">{hotkeyError}</div>}
         </div>
 
         {/* Retain Days */}
-        <div style={styles.group}>
-          <div style={styles.row}>
+        <div className="px-4 py-5 border-b border-border">
+          <div className="flex justify-between items-center">
             <div>
-              <div style={styles.label}>保留时长</div>
-              <div style={styles.desc}>超过以下天数的记录自动删除</div>
+              <div className="text-base font-medium text-foreground mb-0.5">保留时长</div>
+              <div className="text-xs text-muted mt-0.5">超过以下天数的记录自动删除</div>
             </div>
-            <div style={styles.retainControl}>
+            <div className="flex items-center gap-2.5">
               <input
                 type="range" min="1" max="90"
                 value={local.retain_days}
                 onChange={(e) => setLocal({ ...local, retain_days: parseInt(e.target.value) })}
                 onMouseUp={() => handleSave({ retain_days: local.retain_days })}
-                style={styles.slider}
+                className="w-[120px] cursor-pointer"
+                style={{ accentColor: 'var(--color-primary)' }}
               />
-              <span style={styles.retainValue}>{local.retain_days} 天</span>
+              <span className="text-sm font-medium text-foreground min-w-[56px]">{local.retain_days} 天</span>
             </div>
           </div>
-          <div style={styles.statsRow}>
+          <div className="mt-2.5 text-xs text-muted flex gap-1.5 items-center">
             <span>{stats.count.toLocaleString()} 条记录</span>
-            <span style={styles.statsDot}>·</span>
+            <span className="opacity-40">·</span>
             <span>{formatBytes(stats.total_bytes)}</span>
           </div>
           <button
-            style={{ ...styles.clearAllBtn, ...(clearing ? { opacity: 0.6 } : {}) }}
+            className="mt-2.5 px-3.5 py-2 flex items-center gap-1.5 text-xs font-medium border rounded-md cursor-pointer font-inherit transition-all duration-fast disabled:opacity-60"
+            style={{
+              borderColor: 'rgba(239,68,68,0.3)',
+              background: 'rgba(239,68,68,0.06)',
+              color: '#DC2626',
+              opacity: clearing ? 0.6 : 1,
+            }}
             onClick={() => setShowClearModal(true)}
             disabled={clearing || stats.count === 0}
           >
@@ -271,81 +288,81 @@ export default function SettingsPage() {
         </div>
 
         {/* Default Action */}
-        <div style={styles.group}>
-          <div style={styles.label}>默认操作</div>
-          <div style={styles.desc}>点击或按 Ctrl+数字 时的行为</div>
-          <div style={styles.radioGroup}>
-            <label
-              style={{ ...styles.radioLabel, ...(local.default_action === 'copy' ? styles.radioActive : {}) }}
-              onClick={() => handleSave({ default_action: 'copy' })}
-            >
-              <input type="radio" name="action" value="copy" checked={local.default_action === 'copy'} onChange={() => {}} style={styles.radio} />
-              复制到剪贴板
-            </label>
-            <label
-              style={{ ...styles.radioLabel, ...(local.default_action === 'paste' ? styles.radioActive : {}) }}
-              onClick={() => handleSave({ default_action: 'paste' })}
-            >
-              <input type="radio" name="action" value="paste" checked={local.default_action === 'paste'} onChange={() => {}} style={styles.radio} />
-              自动粘贴（复制 + Ctrl+V）
-            </label>
+        <div className="px-4 py-5 border-b border-border">
+          <div className="text-base font-medium text-foreground mb-0.5">默认操作</div>
+          <div className="text-xs text-muted mt-0.5">点击或按 Ctrl+数字 时的行为</div>
+          <div className="flex flex-col gap-1.5 mt-3">
+            {[
+              { value: 'copy', label: '复制到剪贴板', desc: '将内容复制到系统剪贴板' },
+              { value: 'paste', label: '自动粘贴', desc: '复制 + 模拟 Ctrl+V 粘贴' },
+            ].map(({ value, label, desc }) => {
+              const active = local.default_action === value
+              const hovered = hoveredRadio === value
+              return (
+                <label
+                  key={value}
+                  className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-md border cursor-pointer text-sm transition-all duration-fast"
+                  style={{
+                    borderColor: active ? 'var(--color-primary)' : 'var(--color-border)',
+                    background: active ? 'var(--color-primary-alpha-08)' : hovered ? 'var(--color-surface-hover)' : 'transparent',
+                  }}
+                  onClick={() => handleSave({ default_action: value })}
+                  onMouseEnter={() => setHoveredRadio(value)}
+                  onMouseLeave={() => setHoveredRadio(null)}
+                >
+                  <input type="radio" name="action" value={value} checked={active} onChange={() => {}} className="accent-primary" />
+                  <div>
+                    <div style={{ fontWeight: active ? 600 : 500, color: 'var(--color-foreground)' }}>{label}</div>
+                    <div className="text-xs text-muted">{desc}</div>
+                  </div>
+                </label>
+              )
+            })}
           </div>
         </div>
 
         {/* Theme Selector */}
-        <div style={styles.group}>
-          <div style={styles.label}>主题</div>
-          <div style={styles.desc}>切换整体视觉风格（保存后刷新）</div>
-          <div style={styles.themeGrid}>
+        <div className="px-4 py-5 border-b border-border">
+          <div className="text-base font-medium text-foreground mb-0.5">主题</div>
+          <div className="text-xs text-muted mt-0.5">切换整体视觉风格（保存后刷新）</div>
+          <div className="flex flex-col gap-2 mt-3">
             {THEMES.map(t => {
               const active = (local.theme || 'a') === t.id
               return (
                 <button
                   key={t.id}
-                  onClick={() => handleSave({ theme: t.id })}
+                  className="flex items-center gap-3 px-3.5 py-3 rounded-md border cursor-pointer font-inherit text-left transition-all duration-fast"
                   style={{
-                    ...styles.themeCard,
-                    ...(active ? styles.themeCardActive : {}),
+                    borderColor: active ? 'var(--color-primary)' : 'var(--color-border)',
+                    background: active ? 'var(--color-primary-alpha-06)' : 'var(--color-surface)',
                   }}
+                  onClick={() => handleSave({ theme: t.id })}
                 >
-                  <div style={styles.themeSwatch}>
+                  <div className="flex gap-1 flex-shrink-0">
                     {t.colors.map((c, i) => (
                       <div
                         key={i}
+                        className="w-5 h-5 rounded-full"
                         style={{
-                          ...styles.themeColorDot,
                           background: c,
-                          border: i === 2 && t.id === 'c' ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                          border: i === 2 && t.id === 'c' ? '1px solid rgba(255,255,255,0.1)' : '2px solid var(--color-border)',
                         }}
                       />
                     ))}
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{
-                      fontSize: 'var(--font-size-sm)',
-                      fontWeight: active ? 600 : 500,
-                      color: 'var(--color-foreground)',
-                      marginBottom: '2px',
-                    }}>
+                  <div className="flex-1">
+                    <div className="text-sm" style={{ fontWeight: active ? 600 : 500, color: 'var(--color-foreground)', marginBottom: '2px' }}>
                       {t.label}
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--color-muted)' }}>
-                      {t.desc}
-                    </div>
+                    <div className="text-[11px] text-muted">{t.desc}</div>
                   </div>
-                  <div style={{
-                    width: '16px', height: '16px',
-                    borderRadius: '50%',
-                    border: '2px solid var(--color-border)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
-                    ...(active ? { borderColor: 'var(--color-primary)' } : {}),
-                  }}>
-                    {active && <div style={{
-                      width: '8px', height: '8px',
-                      borderRadius: '50%',
-                      background: 'var(--color-primary)',
-                    }} />}
+                  <div
+                    className="w-4 h-4 rounded-full border-2 border-border flex items-center justify-center flex-shrink-0"
+                    style={{ borderColor: active ? 'var(--color-primary)' : undefined }}
+                  >
+                    {active && (
+                      <div className="w-2 h-2 rounded-full" style={{ background: 'var(--color-primary)' }} />
+                    )}
                   </div>
                 </button>
               )
@@ -359,11 +376,11 @@ export default function SettingsPage() {
           { key: 'auto_start', label: '开机自启', desc: '登录时自动启动 jPaste' },
           { key: 'start_minimized', label: '启动时最小化', desc: '启动后最小化到系统托盘（不弹出窗口）' },
         ].map(({ key: k, label, desc }) => (
-          <div style={styles.group} key={k}>
-            <div style={styles.row}>
+          <div className="px-4 py-5 border-b border-border" key={k}>
+            <div className="flex justify-between items-center">
               <div>
-                <div style={styles.label}>{label}</div>
-                <div style={styles.desc}>{desc}</div>
+                <div className="text-base font-medium text-foreground mb-0.5">{label}</div>
+                <div className="text-xs text-muted mt-0.5">{desc}</div>
               </div>
               <ToggleSwitch
                 checked={local[k]}
@@ -374,29 +391,31 @@ export default function SettingsPage() {
           </div>
         ))}
 
-
         {/* Action Modules */}
-        <div style={styles.group}>
-          <div style={styles.label}>操作模块</div>
-          <div style={styles.desc}>启用/禁用并调整按钮显示顺序</div>
-          <div style={styles.actionList}>
+        <div className="px-4 py-5">
+          <div className="text-base font-medium text-foreground mb-0.5">操作模块</div>
+          <div className="text-xs text-muted mt-0.5">启用/禁用并调整按钮显示顺序</div>
+          <div className="flex flex-col gap-1 mt-3">
             {sortedActions.map((action, idx) => (
-              <div key={action.id} style={styles.actionItem}>
-                <div style={styles.actionItemLeft}>
+              <div
+                key={action.id}
+                className="flex justify-between items-center px-3 py-2.5 rounded-md border border-border"
+              >
+                <div className="flex items-center gap-2.5">
                   <ToggleSwitch
                     checked={action.config.enabled}
                     onChange={() => toggleAction(action)}
                     label={`切换${action.label}`}
                   />
-                  <span style={{ ...styles.actionName, opacity: action.config.enabled ? 1 : 0.4 }}>
+                  <span className="text-sm font-medium text-foreground" style={{ opacity: action.config.enabled ? 1 : 0.4 }}>
                     {action.label}
                   </span>
                 </div>
-                <div style={styles.actionItemRight}>
-                  <button style={styles.priorityBtn} onClick={() => moveAction(idx, 'up')} disabled={idx === 0} title="上移">
+                <div className="flex items-center gap-0.5">
+                  <button className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast hover:bg-surface-hover" onClick={() => moveAction(idx, 'up')} disabled={idx === 0} title="上移">
                     <ChevronUp size={14} style={{ opacity: idx === 0 ? 0.3 : 1 }} />
                   </button>
-                  <button style={styles.priorityBtn} onClick={() => moveAction(idx, 'down')} disabled={idx === sortedActions.length - 1} title="下移">
+                  <button className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast hover:bg-surface-hover" onClick={() => moveAction(idx, 'down')} disabled={idx === sortedActions.length - 1} title="下移">
                     <ChevronDown size={14} style={{ opacity: idx === sortedActions.length - 1 ? 0.3 : 1 }} />
                   </button>
                 </div>
@@ -406,70 +425,48 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Clear All Confirmation Modal */}
+      {/* Clear All Confirmation Modal — glass effect */}
       {showClearModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 3000,
-        }} onClick={() => setShowClearModal(false)}>
-          <div style={{
-            background: 'var(--color-elevated)', borderRadius: 'var(--radius-lg)',
-            padding: '24px', width: '340px', maxWidth: '90vw',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-          }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ margin: '0 0 8px', fontSize: 'var(--font-size-lg)', fontWeight: 600 }}>
-              清空剪贴板历史
-            </h3>
-            <p style={{ margin: '0 0 20px', fontSize: 'var(--font-size-sm)', color: 'var(--color-muted)', lineHeight: 1.5 }}>
+        <div
+          className="fixed inset-0 z-[3000] flex items-center justify-center animate-[fadeIn_150ms_ease-out]"
+          style={{ background: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setShowClearModal(false)}
+        >
+          <div className="bg-elevated border border-border rounded-lg shadow-glass-lg p-6 w-[340px] max-w-[90vw]" onClick={e => e.stopPropagation()}>
+            <h3 className="m-0 text-lg font-semibold text-foreground mb-2">清空剪贴板历史</h3>
+            <p className="m-0 mb-5 text-sm text-muted leading-[1.5]">
               共有 <strong>{stats.count.toLocaleString()}</strong> 条记录。选择清空方式：
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div className="flex flex-col gap-2">
               <button
                 onClick={() => doClearAll(false)}
+                className="px-4 py-2.5 rounded-md border border-border cursor-pointer text-sm font-inherit text-left transition-all duration-fast"
                 style={{
-                  padding: '10px 16px', borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
                   background: hoveredClearBtn === 'all' ? 'var(--color-surface-hover)' : 'var(--color-surface)',
-                  color: 'var(--color-foreground)', cursor: 'pointer',
-                  fontSize: 'var(--font-size-sm)', fontFamily: 'inherit',
-                  textAlign: 'left', transition: 'background var(--transition-fast)',
+                  color: 'var(--color-foreground)',
                 }}
                 onMouseEnter={() => setHoveredClearBtn('all')}
                 onMouseLeave={() => setHoveredClearBtn(null)}
               >
-                <div style={{ fontWeight: 600 }}>全部删除</div>
-                <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '2px' }}>
-                  删除所有记录（包括收藏），不可撤销
-                </div>
+                <div className="font-semibold">全部删除</div>
+                <div className="text-xs text-muted mt-0.5">删除所有记录（包括收藏），不可撤销</div>
               </button>
               <button
                 onClick={() => doClearAll(true)}
+                className="px-4 py-2.5 rounded-md border border-border cursor-pointer text-sm font-inherit text-left transition-all duration-fast"
                 style={{
-                  padding: '10px 16px', borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border)',
                   background: hoveredClearBtn === 'fav' ? 'var(--color-surface-hover)' : 'var(--color-surface)',
-                  color: 'var(--color-foreground)', cursor: 'pointer',
-                  fontSize: 'var(--font-size-sm)', fontFamily: 'inherit',
-                  textAlign: 'left', transition: 'background var(--transition-fast)',
+                  color: 'var(--color-foreground)',
                 }}
                 onMouseEnter={() => setHoveredClearBtn('fav')}
                 onMouseLeave={() => setHoveredClearBtn(null)}
               >
-                <div style={{ fontWeight: 600 }}>保留收藏</div>
-                <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '2px' }}>
-                  只删除未收藏的记录，收藏内容保留
-                </div>
+                <div className="font-semibold">保留收藏</div>
+                <div className="text-xs text-muted mt-0.5">只删除未收藏的记录，收藏内容保留</div>
               </button>
               <button
                 onClick={() => setShowClearModal(false)}
-                style={{
-                  padding: '8px', borderRadius: 'var(--radius-md)',
-                  border: 'none', background: 'transparent',
-                  color: 'var(--color-muted)', cursor: 'pointer',
-                  fontSize: 'var(--font-size-sm)', fontFamily: 'inherit',
-                  marginTop: '4px',
-                }}
+                className="py-2 rounded-md border-none bg-transparent text-muted cursor-pointer text-sm font-inherit mt-1"
               >
                 取消
               </button>

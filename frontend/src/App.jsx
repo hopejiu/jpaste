@@ -47,10 +47,7 @@ function AppContent() {
   }, [setSearch])
 
   return (
-    <div className={themeClass} style={{
-      width: '100%', height: '100vh', display: 'flex', flexDirection: 'column',
-      background: 'var(--color-surface)',
-    }}>
+    <div className={`${themeClass} w-screen h-screen flex flex-col`} style={{ background: 'var(--color-surface)' }}>
       <Routes>
         <Route path="/" element={<MainPage />} />
         <Route path="/settings" element={<SettingsPage />} />

@@ -1,22 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { ExternalLink, Trash2 } from 'lucide-react'
 import EntryItem, { isImageOnly } from './EntryItem'
 
-/**
- * Scrollable entry list with infinite scroll and entry rendering.
- * Context menu state lives in the parent (MainPage).
- *
- * Interface:
- *   entries, focusedIdx, hasMore, loading, detectedMap,
- *   thumbnailsRef, animatingId, styles, search,
- *   onLoadMore, onFocus, onSelect, onImageClick, onActionClick,
- *   onCopy, onPaste, onToggleFavorite, onOpenEditor, onDelete,
- *   onContextMenu, ctxMenu, hideCtxMenu, observeItem,
- *   listRef (forwarded ref for IntersectionObserver root)
- */
 export default function EntryList({
   entries, focusedIdx, hasMore, loading, detectedMap,
-  thumbnailsRef, animatingId, styles, search,
+  thumbnailsRef, animatingId, search,
   onLoadMore, onFocus, onSelect, onImageClick, onActionClick,
   onCopy, onPaste, onToggleFavorite, onOpenEditor, onDelete,
   onContextMenu, ctxMenu, hideCtxMenu, observeItem,
@@ -54,11 +42,13 @@ export default function EntryList({
   }
 
   return (
-    <div style={styles.list} ref={listRef}>
+    <div className="flex-1 overflow-y-auto py-1" ref={listRef}>
       {entries.length === 0 && !loading ? (
-        <div style={styles.empty}>
-          <p style={styles.emptyTitle}>{search ? '无匹配记录' : '暂无剪贴板历史'}</p>
-          <p style={styles.emptyDesc}>
+        <div className="flex flex-col items-center justify-center h-[200px] p-6 text-center">
+          <p className="text-lg font-medium text-foreground mb-2">
+            {search ? '无匹配记录' : '暂无剪贴板历史'}
+          </p>
+          <p className="text-sm text-muted leading-[1.6] max-w-[300px]">
             {search ? '换个关键词试试' : '复制文本即可开始。jPaste 在后台监听剪贴板。'}
           </p>
         </div>
@@ -72,7 +62,6 @@ export default function EntryList({
             animatingId={animatingId}
             detectedActions={detectedMap[entry.id]}
             thumb={thumbnailsRef.current?.[entry.id]}
-            styles={styles}
             onFocus={onFocus}
             onSelect={onSelect}
             onImageClick={onImageClick}
@@ -85,19 +74,36 @@ export default function EntryList({
           />
         ))
       )}
-      {loading && <div style={styles.loading}>加载中...</div>}
-      {hasMore && !loading && <div style={styles.loading}>向下滚动加载更多</div>}
+      {loading && (
+        <div className="text-center py-3 text-xs text-muted">加载中...</div>
+      )}
+      {hasMore && !loading && (
+        <div className="text-center py-3 text-xs text-muted">向下滚动加载更多</div>
+      )}
 
       {/* Context Menu */}
       {ctxMenu && (
-        <div style={{ ...styles.ctxOverlay, left: ctxMenu.x, top: ctxMenu.y }}>
+        <div
+          className="fixed min-w-[160px] bg-elevated border border-border rounded-md p-1 z-[2000] animate-[slideDown_120ms_ease-out]"
+          style={{
+            left: ctxMenu.x,
+            top: ctxMenu.y,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+          }}
+        >
           {!isImageOnly(ctxMenu.entry) && (
-            <div style={styles.ctxItem} onClick={() => handleOpenEditor(ctxMenu.entry.id)}>
+            <div
+              className="flex items-center gap-2 px-3 py-2 text-sm text-foreground rounded-sm cursor-pointer transition-[background] duration-fast hover:bg-surface-hover"
+              onClick={() => handleOpenEditor(ctxMenu.entry.id)}
+            >
               <ExternalLink size={14} />
               <span>在编辑器中打开</span>
             </div>
           )}
-          <div style={styles.ctxItemDanger} onClick={() => handleDelete(ctxMenu.entry.id)}>
+          <div
+            className="flex items-center gap-2 px-3 py-2 text-sm text-destructive rounded-sm cursor-pointer transition-[background] duration-fast hover:bg-surface-hover"
+            onClick={() => handleDelete(ctxMenu.entry.id)}
+          >
             <Trash2 size={14} />
             <span>删除</span>
           </div>

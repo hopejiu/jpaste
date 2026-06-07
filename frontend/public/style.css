@@ -9,7 +9,7 @@ body {
   --color-primary: #0D9488;
   --color-primary-hover: #0F766E;
   --color-accent: #EA580C;
-  --color-background: #F1F3F5;
+  --color-background: #F0F2F5;
   --color-surface: #FFFFFF;
   --color-surface-hover: #E8ECF0;
   --color-elevated: #FFFFFF;
@@ -23,15 +23,30 @@ body {
   --color-badge-file: #D97706;
   --color-badge-file-bg: rgba(217, 119, 6, 0.12);
   --color-image-bg: #1a1a2e;
-  --toast-glass-bg: rgba(255, 255, 255, 0.72);
+  --color-titlebar: #F8F9FA;
+  --color-separator: rgba(0, 0, 0, 0.09);
+
   --color-primary-alpha-04: color-mix(in srgb, var(--color-primary) 4%, transparent);
   --color-primary-alpha-06: color-mix(in srgb, var(--color-primary) 6%, transparent);
   --color-primary-alpha-08: color-mix(in srgb, var(--color-primary) 8%, transparent);
   --color-primary-alpha-12: color-mix(in srgb, var(--color-primary) 12%, transparent);
   --color-primary-alpha-15: color-mix(in srgb, var(--color-primary) 15%, transparent);
+
+  /* Glassmorphism tokens */
+  --toast-glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.45);
+  --glass-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  --glass-blur: 20px;
+
+  /* Shadow tokens */
+  --shadow-glass: 0 2px 8px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-glass-lg: 0 4px 16px rgba(0, 0, 0, 0.06), 0 12px 40px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-popup: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
-/* ===== Theme B: 暖调高效 ===== */
+/* ===== Theme B: 靛蓝专注 ===== */
 .theme-b {
   --color-primary: #6366F1;
   --color-primary-hover: #4F46E5;
@@ -50,39 +65,65 @@ body {
   --color-badge-file: #D97706;
   --color-badge-file-bg: rgba(217, 119, 6, 0.12);
   --color-image-bg: #1a1a2e;
-  --toast-glass-bg: rgba(255, 255, 255, 0.72);
+  --color-titlebar: #F4F6F8;
+  --color-separator: rgba(0, 0, 0, 0.09);
+
   --color-primary-alpha-04: color-mix(in srgb, var(--color-primary) 4%, transparent);
   --color-primary-alpha-06: color-mix(in srgb, var(--color-primary) 6%, transparent);
   --color-primary-alpha-08: color-mix(in srgb, var(--color-primary) 8%, transparent);
   --color-primary-alpha-12: color-mix(in srgb, var(--color-primary) 12%, transparent);
   --color-primary-alpha-15: color-mix(in srgb, var(--color-primary) 15%, transparent);
+
+  --toast-glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.45);
+  --glass-shadow: 0 4px 20px rgba(99, 102, 241, 0.06);
+  --glass-blur: 20px;
+
+  --shadow-glass: 0 2px 8px rgba(99, 102, 241, 0.04), 0 8px 24px rgba(99, 102, 241, 0.06);
+  --shadow-glass-lg: 0 4px 16px rgba(99, 102, 241, 0.06), 0 12px 40px rgba(99, 102, 241, 0.08);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-popup: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
-/* ===== Theme C: 深色沉浸 (OLED 黑底白字) ===== */
+/* ===== Theme C: 深色沉浸 (OLED 优化) ===== */
 .theme-c {
-  --color-primary: #5E6AD2;
-  --color-primary-hover: #6B77E0;
-  --color-accent: #7C6FFF;
-  --color-background: #000000;
-  --color-surface: #161616;
-  --color-surface-hover: #222222;
-  --color-elevated: #1E1E1E;
-  --color-foreground: #FFFFFF;
-  --color-muted: #8C8C8C;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-destructive: #EF4444;
-  --color-ring: rgba(94, 106, 210, 0.5);
-  --color-favorite: #F59E0B;
+  --color-primary: #6C78E0;
+  --color-primary-hover: #7B87F0;
+  --color-accent: #8B7FFF;
+  --color-background: #0A0A0A;
+  --color-surface: #141414;
+  --color-surface-hover: #1E1E1E;
+  --color-elevated: #1A1A1A;
+  --color-foreground: #EDEDED;
+  --color-muted: #6B6B6B;
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-destructive: #F87171;
+  --color-ring: rgba(108, 120, 224, 0.5);
+  --color-favorite: #FBBF24;
   --color-success: #34D399;
   --color-badge-file: #FBBF24;
-  --color-badge-file-bg: rgba(251, 191, 36, 0.15);
+  --color-badge-file-bg: rgba(251, 191, 36, 0.12);
   --color-image-bg: #000000;
-  --toast-glass-bg: rgba(30, 30, 30, 0.55);
+  --color-titlebar: #1A1A1A;
+  --color-separator: rgba(255, 255, 255, 0.1);
+
   --color-primary-alpha-04: color-mix(in srgb, var(--color-primary) 4%, transparent);
   --color-primary-alpha-06: color-mix(in srgb, var(--color-primary) 6%, transparent);
   --color-primary-alpha-08: color-mix(in srgb, var(--color-primary) 8%, transparent);
   --color-primary-alpha-12: color-mix(in srgb, var(--color-primary) 12%, transparent);
   --color-primary-alpha-15: color-mix(in srgb, var(--color-primary) 15%, transparent);
+
+  --toast-glass-bg: rgba(20, 20, 20, 0.6);
+  --glass-bg: rgba(20, 20, 20, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  --glass-blur: 24px;
+
+  --shadow-glass: 0 2px 8px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-glass-lg: 0 4px 16px rgba(0, 0, 0, 0.3), 0 12px 40px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-popup: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 /* ===== Shared Theme Tokens ===== */
@@ -153,11 +194,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-muted);
+  background: rgba(100, 116, 139, 0.25);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.5);
+  background: rgba(100, 116, 139, 0.45);
 }
 
 /* ===== Focus ===== */
@@ -173,36 +214,23 @@ button:focus-visible {
 
 /* ===== Animation Keyframes ===== */
 @keyframes fadeScaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ===== Hover States ===== */
@@ -239,8 +267,33 @@ button:hover {
   transform: translateX(20px);
 }
 
-/* ===== Scrollbar for WebKit ===== */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.25); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.45); }
+/* ===== Glass utility classes ===== */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+}
+
+.glass-modal {
+  background: var(--glass-bg);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.8));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.8));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass-lg);
+}
+
+.glass-titlebar {
+  background: var(--color-titlebar);
+  border-bottom: 1px solid var(--color-separator);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.glass-toast {
+  background: var(--toast-glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+}

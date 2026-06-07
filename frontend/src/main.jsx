@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
+import './index.css'
 import App from './App'
 import ToastPage from './pages/ToastPage'
 

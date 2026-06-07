@@ -22,54 +22,25 @@ export default function ActionModal({ open, onClose, title, children }) {
   return (
     <div
       ref={overlayRef}
-      style={styles.overlay}
+      className="fixed inset-0 z-[3000] flex items-center justify-center animate-[fadeScaleIn_150ms_ease-out]"
+      style={{ background: 'rgba(0,0,0,0.35)' }}
       onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
     >
-      <div style={styles.modal}>
-        <div style={styles.header}>
-          <h3 style={styles.title}>{title}</h3>
-          <button style={styles.closeBtn} onClick={onClose} title="关闭">
+      <div className="bg-elevated border border-border rounded-lg shadow-glass-lg w-[90%] max-w-[520px] max-h-[80vh] flex flex-col animate-[slideUp_200ms_ease-out]">
+        <div className="flex items-center justify-between px-[18px] py-3.5 border-b border-border flex-shrink-0">
+          <h3 className="m-0 text-base font-semibold text-foreground">{title}</h3>
+          <button
+            className="w-8 h-8 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded-sm transition-all duration-fast hover:bg-surface-hover"
+            onClick={onClose}
+            title="关闭"
+          >
             <X size={18} />
           </button>
         </div>
-        <div style={styles.content}>
+        <div className="p-[18px] overflow-auto flex-1">
           {children}
         </div>
       </div>
     </div>
   )
-}
-
-const styles = {
-  overlay: {
-    position: 'fixed', inset: 0, zIndex: 3000,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: 'rgba(0,0,0,0.35)',
-    animation: 'fadeScaleIn 150ms ease-out',
-  },
-  modal: {
-    background: 'var(--color-elevated)',
-    borderRadius: 'var(--radius-lg, 12px)',
-    boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-    width: '90%', maxWidth: '520px', maxHeight: '80vh',
-    display: 'flex', flexDirection: 'column',
-    animation: 'slideUp 200ms ease-out',
-  },
-  header: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '14px 18px', borderBottom: '1px solid var(--color-border)',
-    flexShrink: 0,
-  },
-  title: {
-    margin: 0, fontSize: 'var(--font-size-base)', fontWeight: 600,
-    color: 'var(--color-foreground)',
-  },
-  closeBtn: {
-    width: '32px', height: '32px', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', border: 'none', background: 'transparent',
-    color: 'var(--color-muted)', cursor: 'pointer', borderRadius: 'var(--radius-sm)',
-  },
-  content: {
-    padding: '18px', overflow: 'auto', flex: 1,
-  },
 }

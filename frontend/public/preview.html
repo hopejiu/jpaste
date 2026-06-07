@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>jPaste UI 预览</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',sans-serif; padding:32px; background:#f5f5f7; color:#1a1d23; }
+  h1 { font-size:22px; font-weight:600; margin-bottom:4px; }
+  .sub { font-size:13px; color:#868e96; margin-bottom:40px; }
+  .section { margin-bottom:44px; }
+  .section-title { font-size:15px; font-weight:600; color:#495057; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+  .row { display:flex; gap:24px; flex-wrap:wrap; }
+  .col { flex:1; min-width:300px; max-width:480px; border-radius:12px; padding:20px; }
+  .col-a { background:#fff; border:1px solid rgba(0,0,0,0.06); }
+  .col-c { background:#0a0a0a; border:1px solid rgba(255,255,255,0.06); }
+  .col-a .label { color:#6b7280; } .col-c .label { color:#6b7280; }
+  .label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+  .tag { display:inline-block; font-size:10px; padding:2px 8px; border-radius:999px; margin-bottom:8px; }
+  .tag-old { background:rgba(107,114,128,0.12); color:#6b7280; }
+  .tag-new-a { background:rgba(13,148,136,0.1); color:#0d9488; }
+  .tag-new-c { background:rgba(108,120,224,0.15); color:#6c78e0; }
+
+  /* TitleBar */
+  .tb { height:36px; display:flex; align-items:center; padding:0 8px; border-radius:6px 6px 0 0; }
+  .tb-old-a { background:#fff; border-bottom:1px solid rgba(0,0,0,0.07); }
+  .tb-new-a { background:rgba(255,255,255,0.65); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-bottom:1px solid rgba(255,255,255,0.45); }
+  .tb-old-c { background:#141414; border-bottom:1px solid rgba(255,255,255,0.06); }
+  .tb-new-c { background:rgba(20,20,20,0.55); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border-bottom:1px solid rgba(255,255,255,0.08); }
+  .tb-icon { width:32px; height:32px; display:flex; align-items:center; justify-content:center; border-radius:6px; font-size:14px; }
+  .col-a .tb-icon { color:#1a1d23; } .col-c .tb-icon { color:#ededed; }
+  .tb-lbl { flex:1; font-size:13px; font-weight:600; padding-left:6px; }
+  .col-a .tb-lbl { color:#1a1d23; } .col-c .tb-lbl { color:#ededed; }
+
+  /* Modal */
+  .mw { border-radius:8px; padding:20px; }
+  .mw-a { background:rgba(0,0,0,0.04); }
+  .mw-c { background:rgba(0,0,0,0.3); }
+  .modal-s-a { background:#fff; border-radius:12px; box-shadow:0 8px 40px rgba(0,0,0,0.08); }
+  .modal-g-a { background:rgba(255,255,255,0.65); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,0.45); border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.04), 0 12px 40px rgba(0,0,0,0.06); }
+  .modal-s-c { background:#1a1a1a; border-radius:12px; box-shadow:0 8px 40px rgba(0,0,0,0.18); }
+  .modal-g-c { background:rgba(20,20,20,0.55); backdrop-filter:blur(19px); -webkit-backdrop-filter:blur(19px); border:1px solid rgba(255,255,255,0.08); border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,0.3), 0 12px 40px rgba(0,0,0,0.4); }
+  .mh { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid; }
+  .col-a .mh { border-color:rgba(0,0,0,0.07); } .col-c .mh { border-color:rgba(255,255,255,0.06); }
+  .mh h3 { font-size:14px; font-weight:600; }
+  .col-a .mh h3 { color:#1a1d23; } .col-c .mh h3 { color:#ededed; }
+  .mb { padding:18px; } .mb p { font-size:13px; line-height:1.5; }
+  .col-a .mb p { color:#868e96; } .col-c .mb p { color:#6b6b6b; }
+
+  /* Toast */
+  .tt { display:flex; align-items:center; gap:10px; padding:10px 16px; border-radius:10px; }
+  .tt-old-a { background:rgba(255,255,255,0.72); backdrop-filter:blur(16px); }
+  .tt-new-a { background:rgba(255,255,255,0.72); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,0.45); box-shadow:0 2px 8px rgba(0,0,0,0.03),0 8px 24px rgba(0,0,0,0.05); }
+  .tt-old-c { background:rgba(20,20,20,0.6); backdrop-filter:blur(16px); }
+  .tt-new-c { background:rgba(20,20,20,0.6); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border:1px solid rgba(255,255,255,0.08); box-shadow:0 2px 8px rgba(0,0,0,0.2),0 8px 24px rgba(0,0,0,0.3); }
+  .col-a .tt-tit { font-size:13px; font-weight:600; color:#1a1d23; }
+  .col-c .tt-tit { font-size:13px; font-weight:600; color:#ededed; }
+  .col-a .tt-msg { font-size:12px; color:#868e96; }
+  .col-c .tt-msg { font-size:12px; color:#6b6b6b; }
+
+  .note { font-size:12px; line-height:1.5; margin-top:8px; }
+  .col-a .note { color:#6b7280; } .col-c .note { color:#6b7280; }
+  .hi-a { color:#0d9488; } .hi-c { color:#34d399; }
+
+  .bg-grid-a { background-image:linear-gradient(rgba(13,148,136,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(13,148,136,0.04) 1px, transparent 1px); background-size:40px 40px; }
+  .bg-grid-c { background-image:linear-gradient(rgba(108,120,224,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(108,120,224,0.04) 1px, transparent 1px); background-size:40px 40px; }
+
+  .gap { margin-top:16px; }
+</style>
+</head>
+<body>
+
+<h1>✦ jPaste 毛玻璃效果预览</h1>
+<p class="sub">左列 = 浅色 (Theme A) · 右列 = 深色 (Theme C) · 每列上半=改造前 下半=改造后</p>
+
+<!-- TitleBar -->
+<div class="section">
+  <div class="section-title">📐 TitleBar 毛玻璃</div>
+  <div class="row">
+    <div class="col col-a">
+      <div class="label">● 改造前</div>
+      <div class="tb tb-old-a"><div class="tb-icon">📌</div><div class="tb-icon">⚙</div><span class="tb-lbl">jPaste</span><div class="tb-icon">─</div></div>
+      <div class="note">纯白背景 · 实线边框 · 无层次</div>
+      <div class="label gap">✦ 改造后</div>
+      <div class="tb tb-new-a"><div class="tb-icon">📌</div><div class="tb-icon">⚙</div><span class="tb-lbl">jPaste</span><div class="tb-icon">─</div></div>
+      <div class="note"><span class="hi-a">✦</span> 半透玻璃+blur(12px) · 温润 macOS 风格</div>
+    </div>
+    <div class="col col-c">
+      <div class="label">● 改造前</div>
+      <div class="tb tb-old-c"><div class="tb-icon">📌</div><div class="tb-icon">⚙</div><span class="tb-lbl">jPaste</span><div class="tb-icon">─</div></div>
+      <div class="note">纯色 #141414 · 实线边框</div>
+      <div class="label gap">✦ 改造后</div>
+      <div class="tb tb-new-c"><div class="tb-icon">📌</div><div class="tb-icon">⚙</div><span class="tb-lbl">jPaste</span><div class="tb-icon">─</div></div>
+      <div class="note"><span class="hi-c">✦</span> 深色半透玻璃+blur(14px)</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="section">
+  <div class="section-title">🗔 ActionModal 毛玻璃弹窗</div>
+  <div class="row">
+    <div class="col col-a">
+      <div class="label">● 改造前</div>
+      <div class="mw mw-a bg-grid-a">
+        <div class="modal-s-a"><div class="mh"><h3>Base64 解码</h3><span style="color:#868e96;">✕</span></div><div class="mb"><p>纯白弹窗 · 网格不透出</p></div></div>
+      </div>
+      <div class="label gap">✦ 改造后</div>
+      <div class="mw mw-a bg-grid-a">
+        <div class="modal-g-a"><div class="mh"><h3>Base64 解码</h3><span style="color:#868e96;">✕</span></div><div class="mb"><p><span class="hi-a">✦</span> 毛玻璃 · 网格隐约透出 · 更精致</p></div></div>
+      </div>
+    </div>
+    <div class="col col-c">
+      <div class="label">● 改造前</div>
+      <div class="mw mw-c bg-grid-c">
+        <div class="modal-s-c"><div class="mh"><h3>Base64 解码</h3><span style="color:#6b6b6b;">✕</span></div><div class="mb"><p>纯色弹窗 #1A1A1A · 不透出</p></div></div>
+      </div>
+      <div class="label gap">✦ 改造后</div>
+      <div class="mw mw-c bg-grid-c">
+        <div class="modal-g-c"><div class="mh"><h3>Base64 解码</h3><span style="color:#6b6b6b;">✕</span></div><div class="mb"><p><span class="hi-c">✦</span> 暗色毛玻璃 · 网格透出 · 双层阴影</p></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="section">
+  <div class="section-title">🔔 Toast 通知增强</div>
+  <div class="row">
+    <div class="col col-a">
+      <div class="label">● 改造前</div>
+      <div class="tt tt-old-a">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0D9488" stroke-width="2" style="flex-shrink:0;"><rect x="8" y="2" width="8" height="4"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/></svg>
+        <div><div class="tt-tit">jPaste</div><div class="tt-msg">已捕获剪贴板内容</div></div>
+      </div>
+      <div class="note">仅有模糊 · 无边框阴影</div>
+      <div class="label gap">✦ 改造后</div>
+      <div class="tt tt-new-a">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0D9488" stroke-width="2" style="flex-shrink:0;"><rect x="8" y="2" width="8" height="4"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/></svg>
+        <div><div class="tt-tit">jPaste</div><div class="tt-msg">已捕获剪贴板内容</div></div>
+      </div>
+      <div class="note"><span class="hi-a">✦</span> 细白边框+双层阴影+blur(20px)</div>
+    </div>
+    <div class="col col-c">
+      <div class="label">● 改造前</div>
+      <div class="tt tt-old-c">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6C78E0" stroke-width="2" style="flex-shrink:0;"><rect x="8" y="2" width="8" height="4"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/></svg>
+        <div><div class="tt-tit">jPaste</div><div class="tt-msg">已捕获剪贴板内容</div></div>
+      </div>
+      <div class="note">仅有模糊 · 无边框阴影</div>
+      <div class="label gap">✦ 改造后</div>
+      <div class="tt tt-new-c">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6C78E0" stroke-width="2" style="flex-shrink:0;"><rect x="8" y="2" width="8" height="4"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/></svg>
+        <div><div class="tt-tit">jPaste</div><div class="tt-msg">已捕获剪贴板内容</div></div>
+      </div>
+      <div class="note"><span class="hi-c">✦</span> 细边框+双层阴影+blur(24px)</div>
+    </div>
+  </div>
+</div>
+
+<div style="max-width:984px; padding:20px; background:#fff; border-radius:12px; border:1px solid rgba(0,0,0,0.06);">
+  <h3 style="font-size:15px; font-weight:600; margin-bottom:12px;">变更清单</h3>
+  <table style="font-size:13px; border-collapse:collapse; width:100%; color:#374151;">
+    <tr><td style="padding:6px 12px; width:140px;">TitleBar</td><td style="color:#0d9488;width:20px;">✦</td><td>毛玻璃半透明背景 + blur，浅色/深色各自适配置</td></tr>
+    <tr><td style="padding:6px 12px;">ActionModal</td><td style="color:#0d9488;">✦</td><td>毛玻璃弹窗 + 双层阴影，背景网格隐约透出</td></tr>
+    <tr><td style="padding:6px 12px;">Toast</td><td style="color:#0d9488;">✦</td><td>增强 blur + 细边框 + 阴影，两主题均有提升</td></tr>
+    <tr><td style="padding:6px 12px;">Settings 清空弹窗</td><td style="color:#0d9488;">✦</td><td>改用 glass-modal 毛玻璃</td></tr>
+    <tr><td style="padding:6px 12px;">Theme C 深色</td><td style="color:#0d9488;">✦</td><td>主色提亮 #6C78E0，背景纯黑 #0A0A0A，OLED 优化</td></tr>
+    <tr><td style="padding:6px 12px;">代码架构</td><td style="color:#6366f1;">▸</td><td>全部内联样式 → Tailwind 类，维护性提升</td></tr>
+    <tr><td style="padding:6px 12px;">样式清理</td><td style="color:#6366f1;">▸</td><td>删除 304 行废弃 styles.js</td></tr>
+    <tr><td style="padding:6px 12px;">新增令牌</td><td style="color:#6366f1;">▸</td><td>16 个 CSS 变量（玻璃背景/边框/阴影/blur，每主题独立）</td></tr>
+  </table>
+  <p style="font-size:12px; color:#6b7280; margin-top:12px;">⚡ 效果需 <code>wails3 dev</code> 构建完整应用后可见。此页面模拟玻璃效果对比。</p>
+</div>
+
+</body>
+</html>

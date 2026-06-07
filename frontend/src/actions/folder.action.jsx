@@ -9,7 +9,10 @@ function isFilePath(path) {
 
 function openFolder(content, entryId) {
   const isFile = isFilePath(content)
-  FileService.OpenInExplorer(entryId, isFile).catch(e => log.error('FolderAction', 'Failed to open:', e))
+  return FileService.OpenInExplorer(entryId, isFile).catch(e => {
+    log.error('FolderAction', 'Failed to open:', e)
+    throw new Error('文件可能已被删除或移动')
+  })
 }
 
 export default {

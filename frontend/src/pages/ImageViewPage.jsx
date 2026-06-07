@@ -3,8 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { Window } from '@wailsio/runtime'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
-// Wails auto-generated bindings.
-// eslint-disable-next-line import/no-unresolved
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
 
 import { log } from '../logger'
@@ -18,16 +16,15 @@ export default function ImageViewPage() {
   const [imgUrl, setImgUrl] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [imageList, setImageList] = useState([]) // ordered entry IDs
+  const [imageList, setImageList] = useState([])
   const [currentIdx, setCurrentIdx] = useState(-1)
-  const [hoveredNav, setHoveredNav] = useState(null) // 'left' | 'right' | null
+  const [hoveredNav, setHoveredNav] = useState(null)
 
   const imgRef = useRef(null)
   const imgZoomRef = useRef({ scale: 1, tx: 0, ty: 0, dragging: false, lastX: 0, lastY: 0 })
   const [, setImgTick] = useState(0)
   const fetchedRef = useRef(false)
 
-  // Fetch image list for navigation, then load the current image.
   useEffect(() => {
     if (!id) { setLoading(false); setError('缺少 id 参数'); return }
     if (fetchedRef.current) return
@@ -45,7 +42,6 @@ export default function ImageViewPage() {
         log.error('ImageViewPage', 'list error:', err)
         return loadImage(id)
       })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   async function loadImage(entryId) {
@@ -54,7 +50,6 @@ export default function ImageViewPage() {
       .then((url) => {
         setImgUrl(url)
         setLoading(false)
-        // Auto-size window after image loads.
         autoSizeWindow(url)
       })
       .catch((err) => {
@@ -71,7 +66,7 @@ export default function ImageViewPage() {
       const screenH = window.screen.availHeight
       const maxW = Math.min(screenW * 0.9, 1600)
       const maxH = Math.min(screenH * 0.9, 1000)
-      let w = img.naturalWidth + 60  // padding
+      let w = img.naturalWidth + 60
       let h = img.naturalHeight + 60
       if (w > maxW || h > maxH) {
         const ratio = Math.min(maxW / w, maxH / h)
@@ -83,7 +78,7 @@ export default function ImageViewPage() {
       try {
         Window.SetSize(w, h)
         Window.SetMinSize(minW, minH)
-      } catch { /* not all Wails runtimes support this */ }
+      } catch { /* silent */ }
     }
     img.src = url
   }
@@ -103,7 +98,6 @@ export default function ImageViewPage() {
     setImgTick(t => t + 1)
   }
 
-  // Keyboard: Esc close, ← → navigate
   useEffect(() => {
     const handler = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); Window.Hide(); return }
@@ -115,38 +109,17 @@ export default function ImageViewPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [currentIdx, imageList])
 
-  const styles = {
-    container: {
-      width: '100%', height: '100vh', background: 'var(--color-image-bg)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      position: 'relative', overflow: 'hidden',
-    },
-    img: (dragging) => ({
-      maxWidth: '100%', maxHeight: '100vh', objectFit: 'contain',
-      cursor: dragging ? 'grabbing' : (imgZoomRef.current.scale > 1 ? 'grab' : 'default'),
-      userSelect: 'none', transition: 'transform 0.1s ease-out',
-    }),
-    navBtn: {
-      position: 'fixed', top: '50%', transform: 'translateY(-50%)',
-      width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff',
-      cursor: 'pointer', borderRadius: '50%', zIndex: 10,
-      opacity: 0.6, transition: 'opacity 0.15s',
-    },
-    loading: { color: 'rgba(255,255,255,0.5)', fontSize: 14 },
-    error: { color: '#EF4444', fontSize: 14 },
-  }
-
   return (
-    <div style={styles.container}>
-      {loading && <div style={styles.loading}>加载中...</div>}
-      {error && !loading && <div style={styles.error}>{error}</div>}
+    <div className="w-screen h-screen flex items-center justify-center relative overflow-hidden select-none" style={{ background: 'var(--color-image-bg)' }}>
+      {loading && <span className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>加载中...</span>}
+      {error && !loading && <span className="text-sm text-destructive">{error}</span>}
 
       {imgUrl && !loading && (
         <>
           {imageList.length > 1 && currentIdx > 0 && (
             <button
-              style={{ ...styles.navBtn, left: 16, opacity: hoveredNav === 'left' ? 1 : 0.6 }}
+              className="fixed top-1/2 -translate-y-1/2 left-4 w-12 h-12 flex items-center justify-center border-none text-white cursor-pointer rounded-full z-10 transition-opacity duration-150"
+              style={{ background: 'rgba(255,255,255,0.1)', opacity: hoveredNav === 'left' ? 1 : 0.6 }}
               onClick={() => navigateImg(-1)}
               onMouseEnter={() => setHoveredNav('left')}
               onMouseLeave={() => setHoveredNav(null)}
@@ -156,7 +129,8 @@ export default function ImageViewPage() {
           )}
           {imageList.length > 1 && currentIdx < imageList.length - 1 && (
             <button
-              style={{ ...styles.navBtn, right: 16, opacity: hoveredNav === 'right' ? 1 : 0.6 }}
+              className="fixed top-1/2 -translate-y-1/2 right-4 w-12 h-12 flex items-center justify-center border-none text-white cursor-pointer rounded-full z-10 transition-opacity duration-150"
+              style={{ background: 'rgba(255,255,255,0.1)', opacity: hoveredNav === 'right' ? 1 : 0.6 }}
               onClick={() => navigateImg(1)}
               onMouseEnter={() => setHoveredNav('right')}
               onMouseLeave={() => setHoveredNav(null)}
@@ -169,11 +143,13 @@ export default function ImageViewPage() {
             ref={imgRef}
             src={imgUrl}
             alt=""
+            draggable={false}
+            className="max-w-full max-h-screen object-contain select-none"
             style={{
-              ...styles.img(imgZoomRef.current.dragging),
+              cursor: imgZoomRef.current.dragging ? 'grabbing' : (imgZoomRef.current.scale > 1 ? 'grab' : 'default'),
+              transition: 'transform 0.1s ease-out',
               transform: `scale(${imgZoomRef.current.scale}) translate(${imgZoomRef.current.tx}px, ${imgZoomRef.current.ty}px)`,
             }}
-            draggable={false}
             onClick={() => { resetZoom() }}
             onWheel={(e) => {
               e.preventDefault()
