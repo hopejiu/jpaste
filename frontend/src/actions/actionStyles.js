@@ -17,6 +17,8 @@ export const textarea = {
   color: 'var(--color-foreground)',
   outline: 'none', resize: 'vertical',
   transition: 'border-color var(--transition-fast)',
+  userSelect: 'text',
+  cursor: 'text',
 }
 
 export const output = {
@@ -55,4 +57,20 @@ export const resultText = {
   margin: 0, fontSize: 'var(--font-size-sm)',
   fontFamily: 'monospace', whiteSpace: 'pre-wrap',
   wordBreak: 'break-all',
+  userSelect: 'text',
+  cursor: 'text',
+}
+
+export const copyBtn = {
+  position: 'absolute', top: '8px', right: '8px',
+  padding: '4px 8px', borderRadius: 'var(--radius-sm)',
+  background: 'var(--color-primary)', color: '#fff',
+  border: 'none', fontSize: 'var(--font-size-xs)',
+  cursor: 'pointer', opacity: 0.8,
+  transition: 'opacity var(--transition-fast)',
+}
+
+export const copyBtnSuccess = {
+  ...copyBtn,
+  background: 'var(--color-success, #10b981)',
 }
