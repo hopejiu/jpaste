@@ -8,7 +8,6 @@ import { Service as FiloService } from '../../bindings/jpaste/internal/filostack
 import { getById } from '../actions'
 import { useActionDetection } from '../hooks/useActionDetection'
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation'
-import { useContextMenu } from '../hooks/useContextMenu'
 import { Copy, CheckCircle } from 'lucide-react'
 import SearchBar from '../components/SearchBar'
 import TitleBar from '../components/TitleBar'
@@ -35,13 +34,13 @@ export default function MainPage() {
 
   const inputRef = useRef(null)
   const listRef = useRef(null)
+  const hiddenTimeRef = useRef(null) // 记录窗口隐藏的时间戳
 
   // Lazy-loaded image thumbnails for list items.
   const thumbnailsRef = useRef({})
   const [, setThumbTick] = useState(0)
   const thumbObserverRef = useRef(null)
 
-  const { ctxMenu, showCtxMenu, hideCtxMenu } = useContextMenu()
   const closeModal = useCallback(() => setModal(null), [])
 
   const { detectedMap, observeItem } = useActionDetection(entries, settings.action_config, listRef)
@@ -75,13 +74,37 @@ export default function MainPage() {
 
   // Re-focus search + scroll to top on window shown.
   useEffect(() => {
-    const handler = () => {
+    const handleFocus = () => {
+      // 自动清理搜索条件
+      if (settings.auto_clear_search) {
+        const now = Date.now()
+        const hiddenTime = hiddenTimeRef.current
+        const threshold = settings.auto_clear_seconds * 1000
+        
+        // 如果 hiddenTime 为 null（首次显示）或者距离隐藏时间超过阈值
+        if (hiddenTime === null || (now - hiddenTime) >= threshold) {
+          setSearch('')
+          setActiveTag(TAG_ALL)
+          if (isRegex) toggleRegex(false)
+        }
+      }
+      
+      hiddenTimeRef.current = null
       listRef.current?.scrollTo(0, 0)
       inputRef.current?.focus()
     }
-    window.addEventListener('focus', handler)
-    return () => window.removeEventListener('focus', handler)
-  }, [])
+    
+    const handleBlur = () => {
+      hiddenTimeRef.current = Date.now()
+    }
+    
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('blur', handleBlur)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('blur', handleBlur)
+    }
+  }, [settings.auto_clear_search, settings.auto_clear_seconds, setSearch, setActiveTag, isRegex, toggleRegex])
 
   // Lazy-load image thumbnails when they scroll into view.
   useEffect(() => {
@@ -265,15 +288,12 @@ export default function MainPage() {
         onToggleFavorite={toggleFavorite}
         onOpenEditor={handleOpenEditor}
         onDelete={deleteEntry}
-        onContextMenu={showCtxMenu}
-        ctxMenu={ctxMenu}
-        hideCtxMenu={hideCtxMenu}
         observeItem={observeItem}
       />
 
       {/* Footer */}
       <div className="border-t border-border px-4 py-2 flex items-center justify-between flex-shrink-0 gap-2 bg-background">
-        <span className="text-xs text-muted">Ctrl+L搜索 · Ctrl+E编辑 · Del删除 · Space收藏 · Esc隐藏</span>
+        <span className="text-xs text-muted">Ctrl+L搜索 · Ctrl+E/Alt+E编辑 · Del/Alt+Del删除 · Space/Alt+Space收藏 · Alt+C复制 · Alt+V粘贴 · Esc隐藏</span>
         <div
           ref={popupRef}
           className="relative flex items-center gap-0.5 flex-shrink-0"

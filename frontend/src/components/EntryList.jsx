@@ -1,13 +1,12 @@
 import { useEffect } from 'react'
-import { ExternalLink, Trash2 } from 'lucide-react'
-import EntryItem, { isImageOnly } from './EntryItem'
+import EntryItem from './EntryItem'
 
 export default function EntryList({
   entries, focusedIdx, hasMore, loading, detectedMap,
   thumbnailsRef, animatingId, search,
   onLoadMore, onFocus, onSelect, onImageClick, onActionClick,
   onCopy, onPaste, onToggleFavorite, onOpenEditor, onDelete,
-  onContextMenu, ctxMenu, hideCtxMenu, observeItem,
+  observeItem,
   listRef,
 }) {
   // Infinite scroll.
@@ -31,15 +30,7 @@ export default function EntryList({
     }
   }, [focusedIdx, listRef])
 
-  const handleOpenEditor = (id) => {
-    hideCtxMenu()
-    onOpenEditor(id)
-  }
 
-  const handleDelete = (entryId) => {
-    hideCtxMenu()
-    onDelete(entryId)
-  }
 
   return (
     <div className="flex-1 overflow-y-auto py-1" ref={listRef}>
@@ -69,7 +60,8 @@ export default function EntryList({
             onCopy={onCopy}
             onPaste={onPaste}
             onToggleFavorite={onToggleFavorite}
-            onContextMenu={onContextMenu}
+            onOpenEditor={onOpenEditor}
+            onDelete={onDelete}
             observeItem={observeItem}
           />
         ))
@@ -79,35 +71,6 @@ export default function EntryList({
       )}
       {hasMore && !loading && (
         <div className="text-center py-3 text-xs text-muted">向下滚动加载更多</div>
-      )}
-
-      {/* Context Menu */}
-      {ctxMenu && (
-        <div
-          className="fixed min-w-[160px] bg-elevated border border-border rounded-md p-1 z-[2000] animate-[slideDown_120ms_ease-out]"
-          style={{
-            left: ctxMenu.x,
-            top: ctxMenu.y,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-          }}
-        >
-          {!isImageOnly(ctxMenu.entry) && (
-            <div
-              className="flex items-center gap-2 px-3 py-2 text-sm text-foreground rounded-sm cursor-pointer transition-[background] duration-fast hover:bg-surface-hover"
-              onClick={() => handleOpenEditor(ctxMenu.entry.id)}
-            >
-              <ExternalLink size={14} />
-              <span>在编辑器中打开</span>
-            </div>
-          )}
-          <div
-            className="flex items-center gap-2 px-3 py-2 text-sm text-destructive rounded-sm cursor-pointer transition-[background] duration-fast hover:bg-surface-hover"
-            onClick={() => handleDelete(ctxMenu.entry.id)}
-          >
-            <Trash2 size={14} />
-            <span>删除</span>
-          </div>
-        </div>
       )}
     </div>
   )

@@ -162,22 +162,7 @@ func (s *Service) GetHistory(search string, tagMask int, afterCursor1 string, af
 
 	for _, r := range rows {
 		fmts := formatMap[r.ID]
-		text := ""
-		for _, f := range fmts {
-			if f.FormatType == model.CF_UNICODETEXT && f.Content != "" {
-				text = f.Content
-				break
-			}
-		}
-		// Fallback: CF_HDROP path list when CF_UNICODETEXT is absent.
-		if text == "" {
-			for _, f := range fmts {
-				if f.FormatType == model.CF_HDROP && f.Content != "" {
-					text = f.Content
-					break
-				}
-			}
-		}
+		text := model.PrimaryTextFromEntries(fmts)
 		entries = append(entries, model.Entry{
 			ID:            r.ID,
 			ContentHash:   r.ContentHash,
@@ -388,31 +373,11 @@ func (s *Service) GetImageDataURL(entryID int64) (string, error) {
 // --- helpers ---
 
 func computeTextLength(formats []model.CapturedFormat) int {
-	for _, f := range formats {
-		if f.FormatType == model.CF_UNICODETEXT && f.Text != "" {
-			return len(f.Text)
-		}
-	}
-	return 0
+	return model.TextLength(formats)
 }
 
 func buildEntry(id int64, hash, exe, title, createdAt, updatedAt string, formats []model.CapturedFormat) *model.Entry {
-	text := ""
-	for _, f := range formats {
-		if f.FormatType == model.CF_UNICODETEXT {
-			text = f.Text
-			break
-		}
-	}
-	// Fallback for CF_HDROP-only entries.
-	if text == "" {
-		for _, f := range formats {
-			if f.FormatType == model.CF_HDROP && f.Text != "" {
-				text = f.Text
-				break
-			}
-		}
-	}
+	text := model.PrimaryText(formats)
 	e := &model.Entry{
 		ID:          id,
 		ContentHash: hash,

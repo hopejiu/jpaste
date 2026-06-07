@@ -44,6 +44,7 @@ var (
 	kernel32                          = syscall.NewLazyDLL("kernel32.dll")
 	user32                            = syscall.NewLazyDLL("user32.dll")
 	procEnumClipboardFormats          = user32.NewProc("EnumClipboardFormats")
+	procGetClipboardFormatName        = user32.NewProc("GetClipboardFormatNameW")
 	procGlobalSize                    = kernel32.NewProc("GlobalSize")
 	procGetClipboardOwner             = user32.NewProc("GetClipboardOwner")
 	procOpenProcess                   = kernel32.NewProc("OpenProcess")
@@ -194,31 +195,40 @@ func captureAll() model.CapturedData {
 	formats := enumFormats()
 	log.Printf("[clipboard] EnumFormats count=%d", len(formats))
 	var cf []model.CapturedFormat
-	var textContent string
 
 	for _, f := range formats {
 		if f == win.CF_HDROP {
 			txt := readClipboardHDROP()
+			log.Printf("[clipboard] Format CF_HDROP(%d): txt.len=%d", f, len(txt))
 			if txt != "" {
 				log.Printf("[clipboard] CF_HDROP parsed: paths=%q", txt)
 				cf = append(cf, model.CapturedFormat{FormatType: f, Text: txt})
 			}
 		} else if isTextFormat(f) {
 			txt := readClipboardText(f)
+			log.Printf("[clipboard] Format text(%d): txt.len=%d", f, len(txt))
 			if txt != "" {
 				cf = append(cf, model.CapturedFormat{FormatType: f, Text: txt})
-				if f == win.CF_UNICODETEXT {
-					textContent = txt
-				}
 			}
 		} else if isImageFormat(f) {
 			raw := readClipboardBytes(f)
+			log.Printf("[clipboard] Format image(%d): raw.len=%d", f, len(raw))
 			if len(raw) > 0 {
 				cf = append(cf, model.CapturedFormat{FormatType: f, RawData: raw})
+			}
+		} else {
+			name := formatName(f)
+			// Many registered formats (e.g. "code/file-list", "HTML Format") are
+			// actually text-based. Try reading them as text.
+			txt := readClipboardText(f)
+			log.Printf("[clipboard] Format %q(%d): txt.len=%d", name, f, len(txt))
+			if txt != "" {
+				cf = append(cf, model.CapturedFormat{FormatType: f, Text: txt})
 			}
 		}
 	}
 
+	textContent := model.PrimaryText(cf)
 	log.Printf("[clipboard] Captured %d formats, textContent.len=%d", len(cf), len(textContent))
 
 	exe, title := getClipboardSource()
@@ -323,26 +333,82 @@ func enumFormats() []uint32 {
 	return formats
 }
 
+// formatName returns the registered name for a clipboard format ID.
+// Standard formats (< 0xC000) are mapped to well-known names.
+func formatName(id uint32) string {
+	switch id {
+	case 1:
+		return "CF_TEXT"
+	case 2:
+		return "CF_BITMAP"
+	case 3:
+		return "CF_METAFILEPICT"
+	case 4:
+		return "CF_SYLK"
+	case 5:
+		return "CF_DIF"
+	case 6:
+		return "CF_TIFF"
+	case 7:
+		return "CF_OEMTEXT"
+	case 8:
+		return "CF_DIB"
+	case 9:
+		return "CF_PALETTE"
+	case 10:
+		return "CF_PENDATA"
+	case 11:
+		return "CF_RIFF"
+	case 12:
+		return "CF_WAVE"
+	case 13:
+		return "CF_UNICODETEXT"
+	case 14:
+		return "CF_ENHMETAFILE"
+	case 15:
+		return "CF_HDROP"
+	case 16:
+		return "CF_LOCALE"
+	case 17:
+		return "CF_DIBV5"
+	default:
+		// Registered format — ask the OS for its name.
+		var buf [256]uint16
+		r, _, _ := procGetClipboardFormatName.Call(uintptr(id), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+		if r > 0 {
+			return syscall.UTF16ToString(buf[:r])
+		}
+		return fmt.Sprintf("registered_%d", id)
+	}
+}
+
 func readClipboardText(format uint32) string {
 	hData := win.GetClipboardData(format)
 	if hData == 0 {
+		log.Printf("[clipboard] readClipboardText(%d): GetClipboardData returned 0", format)
 		return ""
 	}
 	hMem := win.HGLOBAL(hData)
 	size, _, _ := procGlobalSize.Call(uintptr(hMem))
 	if size == 0 {
+		log.Printf("[clipboard] readClipboardText(%d): GlobalSize=0", format)
 		return ""
 	}
 	ptr := win.GlobalLock(hMem)
 	if ptr == nil {
+		log.Printf("[clipboard] readClipboardText(%d): GlobalLock failed", format)
 		return ""
 	}
 	defer win.GlobalUnlock(hMem)
 
 	if format == win.CF_UNICODETEXT {
-		return utf16BytesToString(unsafe.Slice((*byte)(ptr), size))
+		result := utf16BytesToString(unsafe.Slice((*byte)(ptr), size))
+		log.Printf("[clipboard] readClipboardText(%d): CF_UNICODETEXT size=%d result.len=%d", format, size, len(result))
+		return result
 	}
-	return string(bytesFromPtr(ptr, int(size)))
+	result := string(bytesFromPtr(ptr, int(size)))
+	log.Printf("[clipboard] readClipboardText(%d): CF_TEXT size=%d result.len=%d", format, size, len(result))
+	return result
 }
 
 func readClipboardBytes(format uint32) []byte {

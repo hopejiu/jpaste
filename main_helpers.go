@@ -61,13 +61,7 @@ func (h *watcherHandler) handle(data model.CapturedData) {
 
 	// Push text to FILO stack when stack mode is enabled.
 	stackEnabled := h.filoStack.Enabled()
-	var textToPush string
-	for _, f := range data.Formats {
-		if model.IsTextFormat(f.FormatType) && f.Text != "" {
-			textToPush = f.Text
-			break
-		}
-	}
+	textToPush := model.PrimaryText(data.Formats)
 	applog.Info("stack decision",
 		"stackEnabled", stackEnabled,
 		"isSelfWrite", isSelfWrite,

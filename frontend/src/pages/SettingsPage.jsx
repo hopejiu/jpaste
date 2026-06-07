@@ -287,6 +287,36 @@ export default function SettingsPage() {
           </button>
         </div>
 
+        {/* Auto Clear Search */}
+        <div className="px-4 py-5 border-b border-border">
+          <div className="flex justify-between items-center">
+            <div>
+              <div className="text-base font-medium text-foreground mb-0.5">自动清理搜索</div>
+              <div className="text-xs text-muted mt-0.5">窗口隐藏超过设定时间后，再次显示时自动清空搜索条件</div>
+            </div>
+            <ToggleSwitch
+              checked={local.auto_clear_search}
+              onChange={() => handleSave({ auto_clear_search: !local.auto_clear_search })}
+              label="自动清理搜索"
+            />
+          </div>
+          {local.auto_clear_search && (
+            <div className="mt-3 flex items-center gap-2.5">
+              <input
+                type="range" min="0" max="300" step="5"
+                value={local.auto_clear_seconds}
+                onChange={(e) => setLocal({ ...local, auto_clear_seconds: parseInt(e.target.value) })}
+                onMouseUp={() => handleSave({ auto_clear_seconds: local.auto_clear_seconds })}
+                className="w-[120px] cursor-pointer"
+                style={{ accentColor: 'var(--color-primary)' }}
+              />
+              <span className="text-sm font-medium text-foreground min-w-[56px]">
+                {local.auto_clear_seconds === 0 ? '每次清理' : `${local.auto_clear_seconds} 秒`}
+              </span>
+            </div>
+          )}
+        </div>
+
         {/* Default Action */}
         <div className="px-4 py-5 border-b border-border">
           <div className="text-base font-medium text-foreground mb-0.5">默认操作</div>

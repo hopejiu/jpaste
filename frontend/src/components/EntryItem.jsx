@@ -1,4 +1,5 @@
-import { Copy, ClipboardPaste, Star, Image, ZoomIn, CheckCircle, File, FileText } from 'lucide-react'
+import { useState } from 'react'
+import { Copy, ClipboardPaste, Star, Image, ZoomIn, CheckCircle, File, FileText, ExternalLink, Trash2 } from 'lucide-react'
 import { formatTime, previewContent } from '../utils/format'
 import ActionButtons from './ActionButtons'
 
@@ -19,8 +20,9 @@ export default function EntryItem({
   entry, idx, isFocused, animatingId,
   detectedActions, thumb, styles,
   onFocus, onSelect, onImageClick, onActionClick,
-  onCopy, onPaste, onToggleFavorite, onContextMenu, observeItem,
+  onCopy, onPaste, onToggleFavorite, onOpenEditor, onDelete, observeItem,
 }) {
+  const [isHovered, setIsHovered] = useState(false)
   const shortcut = idx < 9 ? `Ctrl+${idx + 1}` : null
   const time = formatTime(entry.updated_at)
   const hasImg = isImageEntry(entry)
@@ -39,12 +41,12 @@ export default function EntryItem({
         ${isFocused ? 'bg-surface-hover' : ''}
         ${imgOnly ? 'cursor-pointer' : ''}
       `}
-      onMouseEnter={() => onFocus(idx)}
+      onMouseEnter={() => { onFocus(idx); setIsHovered(true) }}
+      onMouseLeave={() => setIsHovered(false)}
       onClick={() => {
         if (imgOnly) { onImageClick(entry); return }
         onSelect(entry)
       }}
-      onContextMenu={(e) => onContextMenu(e, entry)}
     >
       {shortcut && (
         <div
@@ -136,35 +138,57 @@ export default function EntryItem({
               {extractAppName(entry.source_exe)}{entry.source_title ? ` · ${entry.source_title.split(' - ').pop()}` : ''}
             </span>
           )}
-          {!imgOnly && (
-            <ActionButtons
-              actionIds={detectedActions}
-              onClick={(actionId) => onActionClick(actionId, entry)}
-            />
-          )}
-          {isFile && (
+          
+          {/* Secondary actions - shown on hover */}
+          <div className={`flex items-center gap-1 transition-opacity duration-fast ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+            {!imgOnly && (
+              <ActionButtons
+                actionIds={detectedActions}
+                onClick={(actionId) => onActionClick(actionId, entry)}
+              />
+            )}
+            {isFile && (
+              <button
+                className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  navigator.clipboard.writeText(entry.content)
+                }}
+                title="复制路径文本"
+              >
+                <FileText size={14} />
+              </button>
+            )}
+            {!imgOnly && (
+              <button
+                className={`w-7 h-7 flex items-center justify-center border-none bg-transparent cursor-pointer rounded transition-all duration-fast flex-shrink-0 ${
+                  entry.is_favorite ? 'text-favorite' : 'text-muted'
+                }`}
+                onClick={(e) => { e.stopPropagation(); onToggleFavorite(entry.id, !entry.is_favorite) }}
+                title={entry.is_favorite ? '取消收藏' : '收藏'}
+              >
+                <Star size={14} fill={entry.is_favorite ? 'var(--color-favorite)' : 'none'} />
+              </button>
+            )}
+            {!imgOnly && (
+              <button
+                className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast"
+                onClick={(e) => { e.stopPropagation(); onOpenEditor(entry.id) }}
+                title="在编辑器中打开"
+              >
+                <ExternalLink size={14} />
+              </button>
+            )}
             <button
-              className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast"
-              onClick={(e) => {
-                e.stopPropagation()
-                navigator.clipboard.writeText(entry.content)
-              }}
-              title="复制路径文本"
+              className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-destructive cursor-pointer rounded transition-all duration-fast"
+              onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
+              title="删除"
             >
-              <FileText size={14} />
+              <Trash2 size={14} />
             </button>
-          )}
-          {!imgOnly && (
-            <button
-              className={`w-7 h-7 flex items-center justify-center border-none bg-transparent cursor-pointer rounded transition-all duration-fast flex-shrink-0 ${
-                entry.is_favorite ? 'text-favorite' : 'text-muted'
-              }`}
-              onClick={(e) => { e.stopPropagation(); onToggleFavorite(entry.id, !entry.is_favorite) }}
-              title={entry.is_favorite ? '取消收藏' : '收藏'}
-            >
-              <Star size={14} fill={entry.is_favorite ? 'var(--color-favorite)' : 'none'} />
-            </button>
-          )}
+          </div>
+          
+          {/* Primary actions - always visible */}
           <button
             className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast"
             onClick={(e) => { e.stopPropagation(); onCopy(entry.id) }}

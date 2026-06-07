@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS = {
   paste_order: 'normal',
   action_config: {},
   theme: 'a',
+  auto_clear_search: false,
+  auto_clear_seconds: 30,
 }
 
 export function AppProvider({ children }) {
