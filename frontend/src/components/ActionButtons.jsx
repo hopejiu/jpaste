@@ -1,8 +1,8 @@
-import { Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen } from 'lucide-react'
+import { Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio } from 'lucide-react'
 import { getById } from '../actions'
 
 const ICON_MAP = {
-  Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen,
+  Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio,
 }
 
 /**

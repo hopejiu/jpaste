@@ -72,6 +72,12 @@ How long clipboard entries are kept before automatic cleanup. Default: 30 days. 
 ### JSON Viewer Window
 A separate Wails window opened for structured JSON viewing and editing. When a clipboard entry is detected as valid JSON and the user clicks "查看 JSON", the `jsonviewer.Service` calls the create-window callback with `/json-view?id=<entryID>`. The front-end `JsonViewPage` parses the `id` query parameter and retrieves the entry content via the `HistoryService.GetEntryContent(entryId)` binding, then renders it with the [jsoneditor](https://github.com/josdejong/jsoneditor) component in `tree` mode with optional `code` (Ace editor) mode toggle. The editor supports full CRUD operations, undo/redo, search, sort, drag-and-drop, and JSON formatting. The JSON viewer window is independent — it can stay open while the user continues using the main window.
 
+### Curl Debugger Window
+A separate Wails window opened when a clipboard entry starts with `curl ` (case-insensitive). The `curlviewer.Service` calls the create-window callback with `/curl-view?id=<entryID>`. The front-end `CurlViewPage` fetches the entry content via `HistoryService.GetEntryContent(entryId)` and parses it with the [curlconverter](https://github.com/curlconverter/curlconverter) library (dynamic import, loads WASM) to extract method, URL, query parameters, headers, body, and redirect policy. The user can edit any field, click "发送" to execute the HTTP request via the Go binding `curlviewer.Service.SendCurlRequest()`, and view the response (status, headers, body). If the response body is valid JSON, a "查看 JSON" button toggles an embedded jsoneditor in tree/code mode. A "复制为 Curl" button regenerates a curl command from the current field values.
+
+### WebSocket Debugger Window
+A separate Wails window opened when a clipboard entry starts with `ws://` or `wss://`. The `wssviewer.Service` calls the create-window callback with `/ws-view?id=<entryID>`. The front-end `WsViewPage` fetches the entry content (the WS URL) and displays a connection panel. Pure frontend implementation using the browser's native `WebSocket` API — the user clicks "连接" to initiate the connection, then sends text messages and views the message history (sent/received/system). The connection is manually managed; closing the window automatically disconnects.
+
 ### Toast
 A small frameless Wails window shown at the bottom-right of the primary screen when new clipboard content is captured. Appears with 200ms fade-in, stays for ~2.6s, exits with 150ms fade-out. IgnoreMouseEvents + no focus steal. Uses an event-driven pattern: Go emits `toast-notification` with `{title, message}`, and the pre-created toast window's frontend listens directly.
 
@@ -87,21 +93,23 @@ A `.txt` file created in `%TEMP%` with the selected entry's content, then opened
 │  React Frontend (WebView)                                  │
 │  ┌────────────┐ ┌──────────────┐ ┌────────────────────┐   │
 │  │  MainPage   │ │ SettingsPage │ │ JsonViewPage (*)   │   │
+│  │             │ │              │ │ CurlViewPage (*)   │   │
+│  │             │ │              │ │ WsViewPage (*)     │   │
 │  └────────────┘ └──────────────┘ └────────────────────┘   │
-│         ↕ Wails Bindings         ↕ (separate window)      │
+│         ↕ Wails Bindings         ↕ (separate windows)      │
 ├──────────────────────────────────────────────────────────┤
 │  Go Backend                                                │
 │  ┌──────────┐ ┌─────────────────┐  ┌───────────────────┐  │
 │  │Clipboard │ │ HistoryService  │  │  JsonViewerSvc    │  │
 │  │ Watcher  │ │ (EntryStore)    │  │  ImageViewerSvc   │  │
-│  │(lxn/win) │ └─────────────────┘  └───────────────────┘  │
-│  └──────────┘ ┌─────────────────┐  ┌───────────────────┐  │
-│               │ ImageStore      │  │  FiloStackService │  │
-│               │ (ImageStorer)   │  │  (Strategy: Stack │  │
-│  ┌──────────┐ └─────────────────┘  │   / Queue)       │  │
-│  │Settings  │ ┌─────────────────┐  └───────────────────┘  │
-│  │ Service  │ │ FileService     │                         │
-│  └──────────┘ └─────────────────┘                         │
+│  │(lxn/win) │ └─────────────────┘  │  CurlViewerSvc    │  │
+│  └──────────┘ ┌─────────────────┐  │  WssViewerSvc     │  │
+│               │ ImageStore      │  └───────────────────┘  │
+│               │ (ImageStorer)   │                          │
+│  ┌──────────┐ └─────────────────┘                          │
+│  │Settings  │ ┌─────────────────┐                          │
+│  │ Service  │ │ FileService     │                          │
+│  └──────────┘ └─────────────────┘                          │
 │  ┌──────────────────┐ ┌──────────────────┐                │
 │  │ ToastService     │ │ System Tray +    │                │
 │  │ (event-driven)   │ │ Global Hotkey    │                │
@@ -115,8 +123,8 @@ A `.txt` file created in `%TEMP%` with the selected entry's content, then opened
 │  └───────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────┘
 
-(*) JsonViewPage / ImageViewPage run in separate Wails windows,
-    created on demand by jsonviewer.Service / imageviewer.Service.
+(*) JsonViewPage / ImageViewPage / CurlViewPage / WsViewPage run in separate Wails windows,
+    created on demand by jsonviewer.Service / imageviewer.Service / curlviewer.Service / wssviewer.Service.
 ```
 
 ## Design Patterns Used
@@ -171,6 +179,8 @@ The six built-in action modules:
 | folder    | Starts with `X:\` or `\\` (Windows) | Open in Explorer | Go: `app.Env.OpenFileManager()` via `fileop.Service.OpenInExplorer()` |
 | base64    | Base64 charset, length>4, mod4=0   | Editable decode in modal | `atob()` |
 | unicode   | Contains `\uXXXX` pattern          | Editable decode in modal | `String.fromCharCode()` |
+| curl      | Starts with `curl ` (case-insensitive) | Opens separate window with HTTP debugger (parse/edit/send/response) | Go: `curlviewer.Service.OpenCurlViewer()` with `SendCurlRequest()` binding; front-end: `curlconverter` library for parse, `jsoneditor` for JSON response |
+| ws        | Starts with `ws://` or `wss://`     | Opens separate window for WebSocket send/receive | Go: `wssviewer.Service.OpenWsViewer()` opens window; pure front-end WebSocket API |
 
 ## Key Behaviors
 

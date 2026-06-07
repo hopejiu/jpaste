@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"os"
 	"runtime"
 	"strings"
 	"syscall"
@@ -222,6 +223,18 @@ func captureAll() model.CapturedData {
 
 	exe, title := getClipboardSource()
 
+	// When the clipboard owner is msedgewebview2.exe, check whether it belongs to
+	// jPaste's own WebView2 process tree (child of this process). If so, the copy
+	// was done inside jPaste's UI (e.g. Ctrl+C on selected text in the WebView2
+	// viewport), not from an external app. Override the source to "jPaste".
+	if strings.Contains(strings.ToLower(exe), "msedgewebview2") {
+		if pid := getClipboardOwnerPID(); pid > 0 && isOwnWebView2Process(pid) {
+			log.Printf("[clipboard] Capture from own WebView2 child (pid=%d), overriding source to jPaste", pid)
+			exe = "jPaste"
+			title = ""
+		}
+	}
+
 	var hashInput []byte
 	if textContent != "" {
 		hashInput = []byte(textContent)
@@ -405,6 +418,46 @@ func getClipboardSource() (exe, title string) {
 	return exe, title
 }
 
+// getClipboardOwnerPID returns the PID of the window that currently owns the clipboard.
+func getClipboardOwnerPID() uint32 {
+	hwndRaw, _, _ := procGetClipboardOwner.Call()
+	hwnd := win.HWND(hwndRaw)
+	if hwnd == 0 {
+		return 0
+	}
+	var pid uint32
+	win.GetWindowThreadProcessId(hwnd, &pid)
+	return pid
+}
+
+// isOwnWebView2Process checks whether the given PID belongs to a msedgewebview2.exe
+// process that is a direct child of the current jPaste process.
+func isOwnWebView2Process(pid uint32) bool {
+	snapshot, err := syscall.CreateToolhelp32Snapshot(syscall.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return false
+	}
+	defer syscall.CloseHandle(snapshot)
+
+	var pe syscall.ProcessEntry32
+	pe.Size = uint32(unsafe.Sizeof(pe))
+	selfPID := uint32(os.Getpid())
+
+	for ok := syscall.Process32First(snapshot, &pe); ok == nil; ok = syscall.Process32Next(snapshot, &pe) {
+		if pe.ProcessID != pid {
+			continue
+		}
+		// Check it's actually msedgewebview2.exe.
+		name := syscall.UTF16ToString(pe.ExeFile[:])
+		if !strings.EqualFold(name, "msedgewebview2.exe") {
+			return false
+		}
+		// Check it's a child of the current process (jPaste).
+		return pe.ParentProcessID == selfPID
+	}
+	return false
+}
+
 func queryFullProcessImageName(hProcess win.HANDLE) string {
 	var buf [win.MAX_PATH]uint16
 	size := uint32(len(buf))
@@ -537,6 +590,7 @@ func WriteFilePaths(paths []string) bool {
 }
 
 func WriteText(text string) bool {
+	log.Printf("[clipboard] WriteText: calling MarkSelfWrite, text=%q", util.Truncate(text, 40))
 	MarkSelfWrite(text)
 	u16, err := syscall.UTF16FromString(text)
 	if err != nil {

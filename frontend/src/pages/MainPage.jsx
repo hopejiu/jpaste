@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useClipboard, TAGS } from '../context/ClipboardContext'
+import { useClipboard, TAGS, TAG_FAVORITE } from '../context/ClipboardContext'
 import { useApp } from '../context/AppContext'
 import { Service as FileService } from '../../bindings/jpaste/internal/fileop'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
@@ -9,6 +9,7 @@ import { getById } from '../actions'
 import { useActionDetection } from '../hooks/useActionDetection'
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation'
 import { useContextMenu } from '../hooks/useContextMenu'
+import { Copy, CheckCircle } from 'lucide-react'
 import SearchBar from '../components/SearchBar'
 import TitleBar from '../components/TitleBar'
 import TagTabs from '../components/TagTabs'
@@ -30,6 +31,7 @@ export default function MainPage() {
   const [modal, setModal] = useState(null)
   const [animatingId, setAnimatingId] = useState(null)
   const [errorAlert, setErrorAlert] = useState(null) // { title, message }
+  const [copyAllDone, setCopyAllDone] = useState(false)
 
   const inputRef = useRef(null)
   const listRef = useRef(null)
@@ -158,6 +160,20 @@ export default function MainPage() {
     useEntry(id, 'paste')
   }, [useEntry])
 
+  const handleCopyAll = useCallback(() => {
+    const textContents = entries
+      .filter(e => e.content && e.content.trim())
+      .map(e => e.content)
+      .join('\n')
+    if (!textContents) return
+    navigator.clipboard.writeText(textContents)
+      .then(() => {
+        setCopyAllDone(true)
+        setTimeout(() => setCopyAllDone(false), 1500)
+      })
+      .catch(err => log.error('MainPage', 'Failed to copy all:', err))
+  }, [entries])
+
   // --- Stack/Queue popup ---
   const [stackItems, setStackItems] = useState([])
   const [showPopup, setShowPopup] = useState(false)
@@ -205,6 +221,28 @@ export default function MainPage() {
         activeTag={activeTag}
         onTagChange={handleTagChange}
       />
+
+      {/* Copy All button (only in favorites view) */}
+      {activeTag === TAG_FAVORITE && entries.length > 0 && (
+        <div className="flex items-center justify-center px-4 py-1.5 border-b border-border bg-background">
+          <button
+            onClick={handleCopyAll}
+            className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-primary rounded-md border border-border cursor-pointer font-inherit transition-all duration-fast hover:bg-primary-alpha-06"
+          >
+            {copyAllDone ? (
+              <>
+                <CheckCircle size={14} />
+                已复制
+              </>
+            ) : (
+              <>
+                <Copy size={14} />
+                复制所有
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Entry List */}
       <EntryList

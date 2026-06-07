@@ -29,6 +29,7 @@ func MarkSelfWrite(text string) {
 	selfWriteHash = util.SHA256String(text)
 	selfWriteTime = time.Now()
 	selfWriteMu.Unlock()
+	log.Printf("[clipboard] MarkSelfWrite: hash=%s text=%q", selfWriteHash[:12], util.Truncate(text, 40))
 }
 
 // IsSelfWrite reports whether the captured data matches the last text

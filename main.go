@@ -10,6 +10,7 @@ import (
 	"unsafe"
 
 	"jpaste/internal/clipboard"
+	"jpaste/internal/curlviewer"
 	"jpaste/internal/db"
 	"jpaste/internal/events"
 	"jpaste/internal/fileop"
@@ -23,6 +24,7 @@ import (
 	"jpaste/internal/repository"
 	"jpaste/internal/settings"
 	"jpaste/internal/toast"
+	"jpaste/internal/wssviewer"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	wailsEvent "github.com/wailsapp/wails/v3/pkg/events"
@@ -158,6 +160,18 @@ func main() {
 		}
 	})
 
+	curlViewerSvc := curlviewer.NewService(func(path string) {
+		if createJsonWindowFn != nil {
+			createJsonWindowFn(path, "HTTP 调试")
+		}
+	})
+
+	wssViewerSvc := wssviewer.NewService(func(path string) {
+		if createJsonWindowFn != nil {
+			createJsonWindowFn(path, "WS 调试")
+		}
+	})
+
 	// Watcher — event-driven via WM_CLIPBOARDUPDATE.
 	watcher := clipboard.NewWatcher(newWatcherHandler(histSvc, filoStack, sett, toastSvc))
 
@@ -172,7 +186,7 @@ func main() {
 					// SPA fallback: only rewrite known SPA routes to serve index.html.
 					// Avoid rewriting other extension-less paths (e.g. /wails/*, Vite internal paths).
 					switch req.URL.Path {
-					case "/image-view", "/json-view", "/settings", "/toast":
+					case "/image-view", "/json-view", "/settings", "/toast", "/curl-view", "/ws-view":
 						req.URL.Path = "/"
 					}
 					next.ServeHTTP(rw, req)
@@ -186,6 +200,8 @@ func main() {
 			application.NewService(fileSvc),
 			application.NewService(jsonViewerSvc),
 			application.NewService(imageViewerSvc),
+			application.NewService(curlViewerSvc),
+			application.NewService(wssViewerSvc),
 			application.NewService(toastSvc),
 			application.NewService(filoStack),
 			application.NewService(&Pinner{}),

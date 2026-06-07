@@ -41,6 +41,17 @@ func newWatcherHandler(histSvc *history.Service, filoStack *filostack.Service, s
 
 func (h *watcherHandler) handle(data model.CapturedData) {
 	applog.Info("capture callback", "formats", len(data.Formats), "hash", data.PrimaryHash[:12], "source", data.SourceEXE)
+
+	// Detect self-writes early so we can override the clipboard owner EXE.
+	// jPaste writes to the clipboard via Wails' WebView2 (msedgewebview2.exe),
+	// so getClipboardSource() returns the WebView2 process instead of jPaste.
+	isSelfWrite := clipboard.IsSelfWrite(data)
+	applog.Info("self-write check", "isSelfWrite", isSelfWrite, "source", data.SourceEXE)
+	if isSelfWrite {
+		data.SourceEXE = "jPaste"
+		applog.Info("self-write detected, overriding source to jPaste")
+	}
+
 	entry, isNew := h.histSvc.CaptureEntry(data)
 	if isNew {
 		applog.Info("new clipboard entry", "id", entry.ID, "text", previewText(entry.Content), "source", entry.SourceEXE)
@@ -50,7 +61,6 @@ func (h *watcherHandler) handle(data model.CapturedData) {
 
 	// Push text to FILO stack when stack mode is enabled.
 	stackEnabled := h.filoStack.Enabled()
-	isSelfWrite := clipboard.IsSelfWrite(data)
 	var textToPush string
 	for _, f := range data.Formats {
 		if model.IsTextFormat(f.FormatType) && f.Text != "" {

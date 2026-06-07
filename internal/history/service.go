@@ -249,6 +249,8 @@ func (s *Service) DeleteEntry(id int64) error {
 
 // UseEntry performs the default action and refreshes updated_at.
 func (s *Service) UseEntry(id int64, action string) error {
+	log.Printf("[history] UseEntry: id=%d action=%s", id, action)
+
 	// Try CF_HDROP (file paths) first — restore as proper file drop.
 	hdropText, _ := s.store.QueryFormatContent(id, model.CF_HDROP)
 	if hdropText != "" {
@@ -264,6 +266,7 @@ func (s *Service) UseEntry(id int64, action string) error {
 	// Try text.
 	text, _ := s.store.QueryFormatContent(id, model.CF_UNICODETEXT)
 	if text != "" {
+		log.Printf("[history] UseEntry: calling SetText, len=%d text=%q", len(text), util.Truncate(text, 40))
 		s.store.UpdateTimestamp(id, nowMillis())
 		s.clipboard.SetText(text)
 		if action == "paste" && s.performPaste != nil {
