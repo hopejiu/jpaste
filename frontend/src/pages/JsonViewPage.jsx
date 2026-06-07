@@ -74,8 +74,14 @@ export default function JsonViewPage() {
       if (cancelled) return
       JSONEditorRef.current = JSONEditor
       log.info('JsonViewPage', 'creating JSONEditor instance')
+
+      // 从 localStorage 读取上次使用的模式，默认为 tree
+      const savedMode = (() => {
+        try { return localStorage.getItem('jpaste-json-mode') || 'tree' } catch { return 'tree' }
+      })()
+
       const editor = new JSONEditor(containerRef.current, {
-        mode: 'tree',
+        mode: savedMode,
         modes: ['tree', 'code'],
         mainMenuBar: true,
         navigationBar: true,
@@ -85,10 +91,13 @@ export default function JsonViewPage() {
         indentation: 2,
         sortObjectKeys: false,
         limitDragging: false,
+        onModeChange: (newMode) => {
+          try { localStorage.setItem('jpaste-json-mode', newMode) } catch { /* ignore */ }
+        },
       }, jsonData)
 
       editorRef.current = editor
-      log.info('JsonViewPage', 'editor created OK')
+      log.info('JsonViewPage', 'editor created OK, mode=', savedMode)
     })
     return () => { cancelled = true }
   }, [jsonData])
@@ -117,6 +126,8 @@ export default function JsonViewPage() {
 
   return (
     <div className="w-screen h-screen relative">
+      {/* 隐藏 code 模式右上角的 "powered by ace" 链接 */}
+      <style>{'.jsoneditor-poweredBy { display: none !important; }'}</style>
       <div ref={containerRef} className="w-full h-screen" />
 
       {loading && (
