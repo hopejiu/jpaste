@@ -9,6 +9,8 @@ export default {
   label: '查看 JSON',
   icon: 'Braces',
   priority: 40,
+  trigger: '以 { 或 [ 开头的合法 JSON',
+  desc: '在独立窗口中展开浏览/编辑 JSON，支持树形和代码视图',
   detect(content) {
     const s = content.trim()
     if (!s.startsWith('{') && !s.startsWith('[')) return false

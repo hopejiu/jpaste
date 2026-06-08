@@ -6,7 +6,7 @@ export default function EntryList({
   thumbnailsRef, animatingId, search,
   onLoadMore, onFocus, onSelect, onImageClick, onActionClick,
   onCopy, onPaste, onToggleFavorite, onOpenEditor, onDelete,
-  observeItem,
+  observeItem, selectedActionIdx,
   listRef,
 }) {
   // Infinite scroll.
@@ -53,6 +53,7 @@ export default function EntryList({
             animatingId={animatingId}
             detectedActions={detectedMap[entry.id]}
             thumb={thumbnailsRef.current?.[entry.id]}
+            selectedActionIdx={idx === focusedIdx ? selectedActionIdx : -1}
             onFocus={onFocus}
             onSelect={onSelect}
             onImageClick={onImageClick}

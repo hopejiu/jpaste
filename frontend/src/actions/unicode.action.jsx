@@ -44,6 +44,8 @@ export default {
   label: 'Unicode 解码',
   icon: 'Languages',
   priority: 20,
+  trigger: '包含 \\uXXXX 转义序列的文本',
+  desc: '在弹窗中将转义序列解码为实际字符',
   detect(content) {
     return /\\u[0-9a-fA-F]{4}/.test(content) && content.length <= 2000
   },

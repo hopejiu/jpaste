@@ -9,6 +9,8 @@ export default {
   label: 'WS 调试',
   icon: 'Radio',
   priority: 35,
+  trigger: '以 ws:// 或 wss:// 开头的地址',
+  desc: '在独立窗口中连接 WebSocket 并收发调试消息',
   detect(content) {
     const s = content.trim()
     return s.startsWith('ws://') || s.startsWith('wss://')

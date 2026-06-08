@@ -1,8 +1,12 @@
 import { useCallback } from 'react'
 import { Window } from '@wailsio/runtime'
+import { log } from '../logger'
 
-export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry, setSearch, setFocusedIdx, inputRef, modal, closeModal, activeTag, tags, onTagChange, search, listRef, deleteEntry, toggleFavorite, onOpenEditor }) {
+export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry, setSearch, setFocusedIdx, inputRef, modal, closeModal, activeTag, tags, onTagChange, search, listRef, deleteEntry, toggleFavorite, onOpenEditor, selectedActionIdx, setSelectedActionIdx }) {
   const handleKeyDown = useCallback((e) => {
+    // Log every keydown for debugging.
+    log.debug('Keyboard', `key=${e.key} focusedIdx=${focusedIdx} selectedActionIdx=${selectedActionIdx} entriesLen=${entries.length} modal=${modal}`)
+
     // Modal handling: only Escape passes through.
     if (modal) {
       if (e.key === 'Escape') { e.preventDefault(); closeModal() }
@@ -26,12 +30,10 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       return
     }
 
-    // Ctrl+Enter: force paste (override default action).
-    if (e.ctrlKey && e.key === 'Enter') {
+    // Ctrl+C: copy focused entry.
+    if (e.ctrlKey && e.key === 'c' && focusedIdx >= 0 && entries[focusedIdx]) {
       e.preventDefault()
-      if (focusedIdx >= 0 && entries[focusedIdx]) {
-        useEntry(entries[focusedIdx].id, 'paste')
-      }
+      useEntry(entries[focusedIdx].id, 'copy')
       return
     }
 
@@ -45,18 +47,64 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       return
     }
 
-    // Tab switching: Left/Right arrow keys (with or without Alt).
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Tab') {
+    // Tab / Shift+Tab: switch tag tabs (always works).
+    if (e.key === 'Tab') {
       e.preventDefault()
       const currentIdx = tags.findIndex(t => t.id === activeTag)
       if (currentIdx === -1) return
-      const delta = e.key === 'ArrowLeft' ? -1 : 1
+      const delta = e.shiftKey ? -1 : 1
       const nextIdx = (currentIdx + delta + tags.length) % tags.length
       onTagChange(tags[nextIdx].id)
       return
     }
 
-    // Entry navigation: Up/Down arrow keys (with or without Alt).
+    // ── Action mode: user is navigating action buttons on the focused entry ──
+    if (selectedActionIdx >= 0) {
+      // Esc: exit action mode.
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        log.debug('Keyboard', '→ exit action mode via Esc')
+        setSelectedActionIdx(-1)
+        return
+      }
+      // → : next action button.
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        const currentId = entries[focusedIdx]?.id
+        if (currentId) {
+          const sel = `[data-entry-id="${currentId}"] [data-action-btn="${selectedActionIdx + 1}"]`
+          const nextBtn = document.querySelector(sel)
+          log.debug('Keyboard', `→ next: sel="${sel}" found=${!!nextBtn}`)
+          if (nextBtn) setSelectedActionIdx(prev => prev + 1)
+        }
+        return
+      }
+      // ← : previous action button (at first → exit mode).
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        if (selectedActionIdx === 0) {
+          setSelectedActionIdx(-1)
+        } else {
+          setSelectedActionIdx(prev => prev - 1)
+        }
+        return
+      }
+      // Enter: activate the selected action button.
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const currentId = entries[focusedIdx]?.id
+        if (currentId) {
+          const btn = document.querySelector(`[data-entry-id="${currentId}"] [data-action-btn="${selectedActionIdx}"]`)
+          if (btn) { btn.click(); setSelectedActionIdx(-1) }
+        }
+        return
+      }
+      // Other keys fall through → still handled below (e.g. Ctrl+L, Ctrl+E…).
+    }
+
+    // ── Entry list navigation ──
+
+    // Entry navigation: Up/Down arrow keys.
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setFocusedIdx(prev => Math.min(prev + 1, entries.length - 1))
@@ -68,6 +116,18 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       return
     }
 
+    // → : enter action mode on focused entry (drill-in).
+    if (e.key === 'ArrowRight' && focusedIdx >= 0 && entries[focusedIdx]) {
+      const eid = entries[focusedIdx]?.id
+      // Check what data-action-btn buttons exist on the entry.
+      const entryEl = document.querySelector(`[data-entry-id="${eid}"]`)
+      const btnCount = entryEl ? entryEl.querySelectorAll('[data-action-btn]').length : -1
+      log.debug('Keyboard', `→ drill-in: entryId=${eid} entryEl=${!!entryEl} btnCount=${btnCount}`)
+      e.preventDefault()
+      setSelectedActionIdx(0)
+      return
+    }
+
     // Enter: execute default action on focused entry.
     if (e.key === 'Enter' && focusedIdx >= 0) {
       e.preventDefault()
@@ -75,25 +135,8 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       return
     }
 
-    // Alt+Enter: force paste (same as Ctrl+Enter).
-    if (e.altKey && e.key === 'Enter' && focusedIdx >= 0) {
-      e.preventDefault()
-      useEntry(entries[focusedIdx].id, 'paste')
-      return
-    }
-
     // Delete: remove focused entry.
     if (e.key === 'Delete' && focusedIdx >= 0) {
-      e.preventDefault()
-      const id = entries[focusedIdx].id
-      const newLen = entries.length - 1
-      setFocusedIdx(prev => prev >= newLen ? Math.max(newLen - 1, -1) : prev)
-      deleteEntry(id)
-      return
-    }
-
-    // Alt+Delete: remove focused entry (same as Delete).
-    if (e.altKey && e.key === 'Delete' && focusedIdx >= 0) {
       e.preventDefault()
       const id = entries[focusedIdx].id
       const newLen = entries.length - 1
@@ -109,36 +152,6 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       toggleFavorite(entry.id, !entry.is_favorite)
       return
     }
-
-    // Alt+Space: toggle favorite on focused entry (same as Space).
-    if (e.altKey && e.key === ' ' && focusedIdx >= 0) {
-      e.preventDefault()
-      const entry = entries[focusedIdx]
-      toggleFavorite(entry.id, !entry.is_favorite)
-      return
-    }
-
-    // Alt+E: open focused entry in editor (same as Ctrl+E).
-    if (e.altKey && e.key === 'e' && focusedIdx >= 0) {
-      e.preventDefault()
-      onOpenEditor(entries[focusedIdx].id)
-      return
-    }
-
-    // Alt+C: copy focused entry.
-    if (e.altKey && e.key === 'c' && focusedIdx >= 0) {
-      e.preventDefault()
-      useEntry(entries[focusedIdx].id, 'copy')
-      return
-    }
-
-    // Alt+V: paste focused entry (force paste).
-    if (e.altKey && e.key === 'v' && focusedIdx >= 0) {
-      e.preventDefault()
-      useEntry(entries[focusedIdx].id, 'paste')
-      return
-    }
-
 
     // Home / End: scroll to top / bottom of entry list.
     if (e.key === 'Home') {
@@ -180,7 +193,7 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       inputRef.current?.focus()
     }
-  }, [entries, focusedIdx, useEntry, settings, setSearch, setFocusedIdx, inputRef, modal, closeModal, activeTag, tags, onTagChange, search, listRef, deleteEntry, toggleFavorite, onOpenEditor])
+  }, [entries, focusedIdx, useEntry, settings, setSearch, setFocusedIdx, inputRef, modal, closeModal, activeTag, tags, onTagChange, search, listRef, deleteEntry, toggleFavorite, onOpenEditor, selectedActionIdx, setSelectedActionIdx])
 
   return handleKeyDown
 }

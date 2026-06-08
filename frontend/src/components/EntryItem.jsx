@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Copy, ClipboardPaste, Star, Image, ZoomIn, CheckCircle, File, FileText, ExternalLink, Trash2 } from 'lucide-react'
 import { formatTime, previewContent } from '../utils/format'
 import ActionButtons from './ActionButtons'
+import { getById } from '../actions'
 
 const CF_DIB = 8
 const CF_DIBV5 = 17
@@ -21,19 +22,26 @@ export default function EntryItem({
   detectedActions, thumb, styles,
   onFocus, onSelect, onImageClick, onActionClick,
   onCopy, onPaste, onToggleFavorite, onOpenEditor, onDelete, observeItem,
+  selectedActionIdx,
 }) {
   const [isHovered, setIsHovered] = useState(false)
+  const [hoveredActionIdx, setHoveredActionIdx] = useState(-1)
   const shortcut = idx < 9 ? `Ctrl+${idx + 1}` : null
   const time = formatTime(entry.updated_at)
   const hasImg = isImageEntry(entry)
   const imgOnly = isImageOnly(entry)
   const isFile = isFileEntry(entry)
 
+  // Compute sequential action button indices for keyboard drill-in.
+  const hasDetected = detectedActions && detectedActions.length > 0
+  const showActions = isFocused || isHovered
+
   return (
     <div
       key={entry.id}
       ref={(el) => observeItem(el, entry.id, entry.content)}
       data-thumb-id={hasImg ? entry.id : undefined}
+      data-entry-id={entry.id}
       className={`
         flex gap-2.5 px-4 py-2.5 cursor-pointer
         transition-[background] duration-fast relative
@@ -126,83 +134,166 @@ export default function EntryItem({
           </div>
         )}
         <div className="flex items-center gap-1 mt-1.5">
-          <span className="flex-1 flex gap-2 items-baseline">
+          <span className="flex-1 flex gap-2 items-baseline min-w-0">
             <span className="text-xs text-muted">{time.rel}</span>
             <span className="text-[11px] text-muted opacity-65">{time.abs}</span>
           </span>
           {entry.source_exe && (
             <span
-              className="text-[11px] text-muted opacity-80 ml-2 overflow-hidden text-ellipsis whitespace-nowrap max-w-[120px]"
+              className="text-[11px] text-muted opacity-80 ml-2 overflow-hidden text-ellipsis whitespace-nowrap max-w-[120px] flex-shrink-0"
               title={`${entry.source_exe} — ${entry.source_title || ''}`}
             >
               {extractAppName(entry.source_exe)}{entry.source_title ? ` · ${entry.source_title.split(' - ').pop()}` : ''}
             </span>
           )}
-          
-          {/* Secondary actions - shown on hover */}
-          <div className={`flex items-center gap-1 transition-opacity duration-fast ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-            {!imgOnly && (
-              <ActionButtons
-                actionIds={detectedActions}
-                onClick={(actionId) => onActionClick(actionId, entry)}
-              />
-            )}
-            {isFile && (
-              <button
-                className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  navigator.clipboard.writeText(entry.content)
-                }}
-                title="复制路径文本"
-              >
-                <FileText size={14} />
-              </button>
-            )}
-            {!imgOnly && (
-              <button
-                className={`w-7 h-7 flex items-center justify-center border-none bg-transparent cursor-pointer rounded transition-all duration-fast flex-shrink-0 ${
-                  entry.is_favorite ? 'text-favorite' : 'text-muted'
-                }`}
-                onClick={(e) => { e.stopPropagation(); onToggleFavorite(entry.id, !entry.is_favorite) }}
-                title={entry.is_favorite ? '取消收藏' : '收藏'}
-              >
-                <Star size={14} fill={entry.is_favorite ? 'var(--color-favorite)' : 'none'} />
-              </button>
-            )}
-            {!imgOnly && (
-              <button
-                className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast"
-                onClick={(e) => { e.stopPropagation(); onOpenEditor(entry.id) }}
-                title="在编辑器中打开"
-              >
-                <ExternalLink size={14} />
-              </button>
-            )}
-            <button
-              className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-destructive cursor-pointer rounded transition-all duration-fast"
-              onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
-              title="删除"
-            >
-              <Trash2 size={14} />
-            </button>
+
+          {/* Unified action strip — shown on hover or focus */}
+          <div
+            className={`flex items-center gap-1 transition-opacity duration-fast flex-shrink-0 relative ${showActions ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+            onMouseOver={(e) => {
+              const btn = e.target.closest('[data-action-btn]')
+              if (btn) setHoveredActionIdx(parseInt(btn.dataset.actionBtn, 10))
+            }}
+            onMouseLeave={() => setHoveredActionIdx(-1)}
+          >
+            {(() => {
+              let aidx = 0
+              const items = []
+              const actionLabels = {}
+              const HOVER_RING = 'hover:ring-2 hover:ring-primary hover:ring-inset'
+
+              // Detected action buttons (batched in a single ActionButtons call).
+              if (hasDetected) {
+                const startIdx = aidx
+                detectedActions.forEach((id, i) => {
+                  const action = getById(id)
+                  if (action) actionLabels[startIdx + i] = action.label
+                })
+                aidx += detectedActions.length
+                items.push(
+                  <ActionButtons
+                    key="detected"
+                    actionIds={detectedActions}
+                    onClick={(id) => onActionClick(id, entry)}
+                    baseIdx={startIdx}
+                    selectedActionIdx={selectedActionIdx}
+                    hoverRing
+                  />
+                )
+              }
+
+              // File path copy (file-only).
+              if (isFile) {
+                const curIdx = aidx++
+                actionLabels[curIdx] = '复制路径文本'
+                items.push(
+                  <button
+                    key="filepath"
+                    data-action-btn={curIdx}
+                    className={`w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast flex-shrink-0 ${HOVER_RING} ${selectedActionIdx === curIdx ? 'ring-2 ring-primary ring-inset' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(entry.content) }}
+                    title="复制路径文本"
+                  >
+                    <FileText size={14} />
+                  </button>
+                )
+              }
+
+              // Favorite star (not imgOnly).
+              if (!imgOnly) {
+                const curIdx = aidx++
+                actionLabels[curIdx] = entry.is_favorite ? '取消收藏' : '收藏'
+                items.push(
+                  <button
+                    key="favorite"
+                    data-action-btn={curIdx}
+                    className={`w-7 h-7 flex items-center justify-center border-none bg-transparent cursor-pointer rounded transition-all duration-fast flex-shrink-0 ${entry.is_favorite ? 'text-favorite' : 'text-muted'} ${HOVER_RING} ${selectedActionIdx === curIdx ? 'ring-2 ring-primary ring-inset' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); onToggleFavorite(entry.id, !entry.is_favorite) }}
+                    title={actionLabels[curIdx]}
+                  >
+                    <Star size={14} fill={entry.is_favorite ? 'var(--color-favorite)' : 'none'} />
+                  </button>
+                )
+              }
+
+              // Open in editor (not imgOnly).
+              if (!imgOnly) {
+                const curIdx = aidx++
+                actionLabels[curIdx] = '在编辑器中打开'
+                items.push(
+                  <button
+                    key="edit"
+                    data-action-btn={curIdx}
+                    className={`w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast flex-shrink-0 ${HOVER_RING} ${selectedActionIdx === curIdx ? 'ring-2 ring-primary ring-inset' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); onOpenEditor(entry.id) }}
+                    title={actionLabels[curIdx]}
+                  >
+                    <ExternalLink size={14} />
+                  </button>
+                )
+              }
+
+              // Delete.
+              const delIdx = aidx++
+              actionLabels[delIdx] = '删除'
+              items.push(
+                <button
+                  key="delete"
+                  data-action-btn={delIdx}
+                  className={`w-7 h-7 flex items-center justify-center border-none bg-transparent text-destructive cursor-pointer rounded transition-all duration-fast flex-shrink-0 hover:ring-2 hover:ring-destructive hover:ring-inset ${selectedActionIdx === delIdx ? 'ring-2 ring-destructive ring-inset' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); onDelete(entry.id) }}
+                  title={actionLabels[delIdx]}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )
+
+              // Copy.
+              const copyIdx = aidx++
+              actionLabels[copyIdx] = '复制'
+              items.push(
+                <button
+                  key="copy"
+                  data-action-btn={copyIdx}
+                  className={`w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast flex-shrink-0 ${HOVER_RING} ${selectedActionIdx === copyIdx ? 'ring-2 ring-primary ring-inset' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); onCopy(entry.id) }}
+                  title={actionLabels[copyIdx]}
+                >
+                  <Copy size={14} />
+                </button>
+              )
+
+              // Paste.
+              const pasteIdx = aidx++
+              actionLabels[pasteIdx] = '粘贴'
+              items.push(
+                <button
+                  key="paste"
+                  data-action-btn={pasteIdx}
+                  className={`w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast flex-shrink-0 ${HOVER_RING} ${selectedActionIdx === pasteIdx ? 'ring-2 ring-primary ring-inset' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); onPaste(entry.id) }}
+                  title={actionLabels[pasteIdx]}
+                >
+                  <ClipboardPaste size={14} />
+                </button>
+              )
+
+              // Tooltip: keyboard selection takes priority, fallback to mouse hover.
+              const tooltipIdx = selectedActionIdx >= 0 ? selectedActionIdx : hoveredActionIdx
+              if (tooltipIdx >= 0 && actionLabels[tooltipIdx]) {
+                items.push(
+                  <span
+                    key="tooltip"
+                    className="absolute -top-[22px] left-1/2 -translate-x-1/2 text-[10px] text-primary whitespace-nowrap bg-elevated px-1.5 py-0.5 rounded border border-border shadow-sm"
+                  >
+                    {actionLabels[tooltipIdx]}
+                  </span>
+                )
+              }
+
+              return items
+            })()}
           </div>
-          
-          {/* Primary actions - always visible */}
-          <button
-            className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast"
-            onClick={(e) => { e.stopPropagation(); onCopy(entry.id) }}
-            title="复制"
-          >
-            <Copy size={14} />
-          </button>
-          <button
-            className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast"
-            onClick={(e) => { e.stopPropagation(); onPaste(entry.id) }}
-            title="粘贴"
-          >
-            <ClipboardPaste size={14} />
-          </button>
         </div>
       </div>
 

@@ -56,6 +56,8 @@ export default {
   label: '计算',
   icon: 'Calculator',
   priority: 50,
+  trigger: '纯数字和运算符的表达式',
+  desc: '在弹窗中实时计算并显示结果，可编辑表达式重新计算',
   detect(content) {
     const s = content.trim()
     return /^[\d+\-*/%.()\s]+$/.test(s) && /[+\-*/%]/.test(s) && /\d/.test(s) && s.length <= 200

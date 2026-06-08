@@ -10,6 +10,8 @@ export default {
   label: 'HTTP 调试',
   icon: 'Terminal',
   priority: 55,
+  trigger: '以 "curl " 开头的命令行',
+  desc: '在独立窗口中解析/编辑 HTTP 请求并发送调试，可查看响应',
   detect(content) {
     return /^\s*curl\s/i.test(content)
   },

@@ -8,13 +8,14 @@ import { Service as FiloService } from '../../bindings/jpaste/internal/filostack
 import { getById } from '../actions'
 import { useActionDetection } from '../hooks/useActionDetection'
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation'
-import { Copy, CheckCircle } from 'lucide-react'
+import { Copy, CheckCircle, HelpCircle } from 'lucide-react'
 import SearchBar from '../components/SearchBar'
 import TitleBar from '../components/TitleBar'
 import TagTabs from '../components/TagTabs'
 import EntryList from '../components/EntryList'
 import ActionModal from '../components/ActionModal'
 import { log } from '../logger'
+import ShortcutHelpModal from '../components/ShortcutHelpModal'
 
 export default function MainPage() {
   const {
@@ -27,10 +28,23 @@ export default function MainPage() {
   const { settings, setPasteOrder } = useApp()
 
   const [focusedIdx, setFocusedIdx] = useState(-1)
+  const [selectedActionIdx, setSelectedActionIdx] = useState(-1)
   const [modal, setModal] = useState(null)
   const [animatingId, setAnimatingId] = useState(null)
   const [errorAlert, setErrorAlert] = useState(null) // { title, message }
   const [copyAllDone, setCopyAllDone] = useState(false)
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false)
+
+  // Esc to close error alert.
+  useEffect(() => {
+    if (!errorAlert) return
+    const handler = (e) => { if (e.key === 'Escape') setErrorAlert(null) }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [errorAlert])
+
+  // Exit action mode when focus moves to a different entry.
+  useEffect(() => { setSelectedActionIdx(-1) }, [focusedIdx])
 
   const inputRef = useRef(null)
   const listRef = useRef(null)
@@ -64,7 +78,15 @@ export default function MainPage() {
     entries, focusedIdx, settings, useEntry, setSearch, setFocusedIdx, inputRef, modal, closeModal,
     activeTag, tags: TAGS, onTagChange: handleTagChange, search, listRef,
     deleteEntry, toggleFavorite, onOpenEditor: handleOpenEditor,
+    selectedActionIdx, setSelectedActionIdx,
   })
+
+  // Wrap handleKeyDown to intercept Esc when a modal overlay is open,
+  // preventing the main handler from hiding the window.
+  const wrappedHandleKeyDown = useCallback((e) => {
+    if (e.key === 'Escape' && (showShortcutHelp || errorAlert)) return
+    handleKeyDown(e)
+  }, [handleKeyDown, showShortcutHelp, errorAlert])
 
   // Auto-focus search + scroll to top on mount.
   useEffect(() => {
@@ -225,7 +247,7 @@ export default function MainPage() {
   const modeLabels = { stack: '栈', queue: '队列' }
 
   return (
-    <div className="flex flex-col h-screen outline-none" onKeyDown={handleKeyDown} tabIndex={0}>
+    <div className="flex flex-col h-screen outline-none" onKeyDown={wrappedHandleKeyDown} tabIndex={0}>
       <TitleBar />
       {/* Header with Search */}
       <div className="flex items-center px-4 py-3 gap-2 border-b border-border flex-shrink-0 bg-surface">
@@ -278,6 +300,7 @@ export default function MainPage() {
         animatingId={animatingId}
         search={search}
         listRef={listRef}
+        selectedActionIdx={selectedActionIdx}
         onLoadMore={loadMore}
         onFocus={setFocusedIdx}
         onSelect={handleSelect}
@@ -293,7 +316,16 @@ export default function MainPage() {
 
       {/* Footer */}
       <div className="border-t border-border px-4 py-2 flex items-center justify-between flex-shrink-0 gap-2 bg-background">
-        <span className="text-xs text-muted">Ctrl+L搜索 · Ctrl+E/Alt+E编辑 · Del/Alt+Del删除 · Space/Alt+Space收藏 · Alt+C复制 · Alt+V粘贴 · Esc隐藏</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowShortcutHelp(true)}
+            className="w-5 h-5 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded-sm transition-all duration-fast hover:text-foreground hover:bg-surface-hover"
+            title="快捷键说明"
+          >
+            <HelpCircle size={14} />
+          </button>
+          <span className="text-xs text-muted">Ctrl+L搜索 · E编辑 · C复制 · Del删除 · Space收藏 · Esc隐藏</span>
+        </div>
         <div
           ref={popupRef}
           className="relative flex items-center gap-0.5 flex-shrink-0"
@@ -359,6 +391,9 @@ export default function MainPage() {
           )}
         </div>
       </div>
+
+      {/* Shortcut Help Modal */}
+      <ShortcutHelpModal open={showShortcutHelp} onClose={() => setShowShortcutHelp(false)} />
 
       {/* Action Modal */}
       <ActionModal

@@ -20,6 +20,8 @@ export default {
   label: '打开文件夹',
   icon: 'FolderOpen',
   priority: 60,
+  trigger: 'Windows 本地路径（如 C:\\ 或 \\\\server）',
+  desc: '在资源管理器中打开文件夹，文件路径则定位到文件位置',
   detect(content) {
     const s = content.trim()
     return /^[A-Za-z]:[\\/]|^\\\\/.test(s) && s.length <= 260

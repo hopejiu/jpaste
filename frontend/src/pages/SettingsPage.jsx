@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronUp, ChevronDown, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronUp, ChevronDown, ChevronRight, Trash2, Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio, Link } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useClipboard } from '../context/ClipboardContext'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
@@ -41,6 +41,9 @@ export default function SettingsPage() {
   const [clearing, setClearing] = useState(false)
   const [showClearModal, setShowClearModal] = useState(false)
   const [hoveredClearBtn, setHoveredClearBtn] = useState(null)
+  const [expandedId, setExpandedId] = useState(null)
+
+  const ICON_MAP = { Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio, Url: Link }
 
   useEffect(() => {
     HistoryService.GetStats()
@@ -437,31 +440,70 @@ export default function SettingsPage() {
           <div className="text-base font-medium text-foreground mb-0.5">操作模块</div>
           <div className="text-xs text-muted mt-0.5">启用/禁用并调整按钮显示顺序</div>
           <div className="flex flex-col gap-1 mt-3">
-            {sortedActions.map((action, idx) => (
-              <div
-                key={action.id}
-                className="flex justify-between items-center px-3 py-2.5 rounded-md border border-border"
-              >
-                <div className="flex items-center gap-2.5">
-                  <ToggleSwitch
-                    checked={action.config.enabled}
-                    onChange={() => toggleAction(action)}
-                    label={`切换${action.label}`}
-                  />
-                  <span className="text-sm font-medium text-foreground" style={{ opacity: action.config.enabled ? 1 : 0.4 }}>
-                    {action.label}
-                  </span>
+            {sortedActions.map((action, idx) => {
+              const isExpanded = expandedId === action.id
+              const IconComp = ICON_MAP[action.icon]
+              const disabled = !action.config.enabled
+              return (
+                <div key={action.id} className="flex flex-col rounded-md border border-border">
+                  {/* Header row */}
+                  <div className="flex justify-between items-center px-3 min-h-[44px]">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <ToggleSwitch
+                        checked={action.config.enabled}
+                        onChange={() => toggleAction(action)}
+                        label={`切换${action.label}`}
+                      />
+                      <button
+                        className="flex items-center gap-1 border-none bg-transparent cursor-pointer font-inherit text-left min-w-0 transition-all duration-fast hover:opacity-80"
+                        onClick={() => setExpandedId(isExpanded ? null : action.id)}
+                      >
+                        {IconComp && (
+                          <IconComp
+                            size={15}
+                            style={{
+                              color: disabled ? 'var(--color-muted)' : 'var(--color-primary)',
+                              opacity: disabled ? 0.4 : 1,
+                              flexShrink: 0,
+                            }}
+                          />
+                        )}
+                        <span
+                          className="text-sm font-medium truncate"
+                          style={{ opacity: disabled ? 0.4 : 1, color: 'var(--color-foreground)' }}
+                        >
+                          {action.label}
+                        </span>
+                        {isExpanded ? (
+                          <ChevronDown size={13} style={{ color: 'var(--color-muted)', flexShrink: 0 }} />
+                        ) : (
+                          <ChevronRight size={13} style={{ color: 'var(--color-muted)', flexShrink: 0 }} />
+                        )}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      <button className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast hover:bg-surface-hover" onClick={() => moveAction(idx, 'up')} disabled={idx === 0} title="上移">
+                        <ChevronUp size={14} style={{ opacity: idx === 0 ? 0.3 : 1 }} />
+                      </button>
+                      <button className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast hover:bg-surface-hover" onClick={() => moveAction(idx, 'down')} disabled={idx === sortedActions.length - 1} title="下移">
+                        <ChevronDown size={14} style={{ opacity: idx === sortedActions.length - 1 ? 0.3 : 1 }} />
+                      </button>
+                    </div>
+                  </div>
+                  {/* Expanded detail */}
+                  {isExpanded && (
+                    <div className="px-3 pb-3 border-t border-border">
+                      <div className="text-xs text-muted mt-2 leading-[1.5]">
+                        <span className="font-medium text-foreground">触发：</span>{action.trigger}
+                      </div>
+                      <div className="text-xs text-muted mt-1 leading-[1.5]">
+                        <span className="font-medium text-foreground">功能：</span>{action.desc}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-0.5">
-                  <button className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast hover:bg-surface-hover" onClick={() => moveAction(idx, 'up')} disabled={idx === 0} title="上移">
-                    <ChevronUp size={14} style={{ opacity: idx === 0 ? 0.3 : 1 }} />
-                  </button>
-                  <button className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast hover:bg-surface-hover" onClick={() => moveAction(idx, 'down')} disabled={idx === sortedActions.length - 1} title="下移">
-                    <ChevronDown size={14} style={{ opacity: idx === sortedActions.length - 1 ? 0.3 : 1 }} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       </div>
