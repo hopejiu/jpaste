@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -166,45 +165,6 @@ func cleanupOrphanedWV2() {
 		syscall.CloseHandle(h)
 		applog.Info("cleaned orphaned WebView2 process", "pid", pid, "parent", pi.parentPid)
 	}
-}
-
-func acquireLock(appData string) bool {
-	lockFilePath = filepath.Join(appData, "instance.lock")
-	os.MkdirAll(appData, 0700)
-	data, err := os.ReadFile(lockFilePath)
-	if err == nil {
-		if pid, parseErr := strconv.Atoi(string(data)); parseErr == nil && pid > 0 && isProcessAlive(pid) {
-			return false
-		}
-		os.Remove(lockFilePath)
-	}
-	pid := os.Getpid()
-	if writeErr := os.WriteFile(lockFilePath, []byte(strconv.Itoa(pid)), 0600); writeErr != nil {
-		applog.Warn("write lock file", "error", writeErr)
-		return true
-	}
-	return true
-}
-
-func releaseLock() {
-	if lockFilePath != "" {
-		os.Remove(lockFilePath)
-	}
-}
-
-func isProcessAlive(pid int) bool {
-	const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-	h, err := syscall.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
-	if err != nil {
-		return false
-	}
-	defer syscall.CloseHandle(h)
-	var exitCode uint32
-	err = syscall.GetExitCodeProcess(h, &exitCode)
-	if err != nil {
-		return false
-	}
-	return exitCode == 259
 }
 
 func runCleanup(histSvc *history.Service, sett *settings.Service) {

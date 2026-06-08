@@ -32,7 +32,6 @@ var assets embed.FS
 //go:embed paste.png
 var trayIcon []byte
 
-var lockFilePath string
 var quitting bool
 var pinned bool
 
@@ -66,11 +65,7 @@ func main() {
 	if err := applog.Init(appData); err != nil {
 		fmt.Fprintf(os.Stderr, "init logging: %v\n", err)
 	}
-	if !acquireLock(appData) {
-		applog.Info("another instance is already running, exiting")
-		return
-	}
-	defer releaseLock()
+	var win application.Window
 	cleanupOrphanedWV2()
 	if err := os.MkdirAll(appData, 0700); err != nil {
 		applog.Error("create app data dir", "error", err)
@@ -200,6 +195,17 @@ func main() {
 			application.NewService(toastSvc),
 			application.NewService(filoStack),
 			application.NewService(&Pinner{}),
+		},
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.jpaste.app",
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				applog.Info("second instance launched, activating existing window")
+				application.InvokeSync(func() {
+					if win != nil {
+						showWindow(win)
+					}
+				})
+			},
 		},
 	})
 
@@ -423,7 +429,7 @@ func main() {
 		applog.Info("secondary window shown", "title", title)
 	}
 
-	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	win = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "jPaste", Width: 480, MinWidth: 360, Height: 560, MinHeight: 300,
 		Hidden: false, URL: "/",
 		Frameless:                  true,
