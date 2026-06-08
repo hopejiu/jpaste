@@ -19,6 +19,8 @@ const DEFAULT_SETTINGS = {
   theme: 'a',
   auto_clear_search: false,
   auto_clear_seconds: 30,
+  auto_hide_after_copy: false,
+  notify_opacity: 100,
 }
 
 export function AppProvider({ children }) {

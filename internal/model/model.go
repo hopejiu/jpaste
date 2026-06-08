@@ -24,6 +24,7 @@ const (
 	PasteOrderChanged = "paste-order-changed"
 	FrontendLog       = "frontend-log"
 	ToastNotification = "toast-notification"
+	ToastHidePreview  = "toast-hide-preview"
 )
 
 // ---------------------------------------------------------------------------

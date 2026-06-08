@@ -33,7 +33,7 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
     // Ctrl+C: copy focused entry.
     if (e.ctrlKey && e.key === 'c' && focusedIdx >= 0 && entries[focusedIdx]) {
       e.preventDefault()
-      useEntry(entries[focusedIdx].id, 'copy')
+      useEntry(entries[focusedIdx].id, 'copy', settings.auto_hide_after_copy)
       return
     }
 
@@ -42,7 +42,7 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       e.preventDefault()
       const idx = parseInt(e.key) - 1
       if (idx < entries.length) {
-        useEntry(entries[idx].id, settings.default_action)
+        useEntry(entries[idx].id, settings.default_action, settings.auto_hide_after_copy)
       }
       return
     }
@@ -131,7 +131,7 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
     // Enter: execute default action on focused entry.
     if (e.key === 'Enter' && focusedIdx >= 0) {
       e.preventDefault()
-      useEntry(entries[focusedIdx].id, settings.default_action)
+      useEntry(entries[focusedIdx].id, settings.default_action, settings.auto_hide_after_copy)
       return
     }
 

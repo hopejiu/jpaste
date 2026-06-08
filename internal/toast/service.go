@@ -10,9 +10,11 @@ import (
 // Theme is injected by main.go at emit time so the toast window
 // (a separate Wails window) can apply the correct theme class.
 type ToastData struct {
-	Title   string `json:"title"`
-	Message string `json:"message"`
-	Theme   string `json:"theme,omitempty"`
+	Title     string  `json:"title"`
+	Message   string  `json:"message"`
+	Theme     string  `json:"theme,omitempty"`
+	Opacity   float64 `json:"opacity,omitempty"`    // 0.0-1.0, used by ToastPage for CSS opacity
+	IsPreview bool    `json:"is_preview,omitempty"` // if true, main.go skips auto-hide timer (preview mode)
 }
 
 // Service manages toast notifications via an event-driven pattern.

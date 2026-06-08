@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Events } from '@wailsio/runtime'
 import { ArrowLeft, ChevronUp, ChevronDown, ChevronRight, Trash2, Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio, Link } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useClipboard } from '../context/ClipboardContext'
@@ -43,6 +44,17 @@ export default function SettingsPage() {
   const [showClearModal, setShowClearModal] = useState(false)
   const [hoveredClearBtn, setHoveredClearBtn] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
+
+  // Track whether the notify toggle has been explicitly changed by the user
+  // to avoid showing preview on initial mount when notify is already ON.
+  const notifyToggled = useRef(false)
+
+  // Cleanup: hide preview when leaving settings page.
+  useEffect(() => {
+    return () => {
+      Events.Emit('toast-hide-preview')
+    }
+  }, [])
 
   const ICON_MAP = { Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio, Url: Link }
 
@@ -366,6 +378,21 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* Auto-hide after copy */}
+        <div className="px-4 py-5 border-b border-border">
+          <div className="flex justify-between items-center">
+            <div>
+              <div className="text-base font-medium text-foreground mb-0.5">复制后自动隐藏</div>
+              <div className="text-xs text-muted mt-0.5">复制到剪贴板后自动隐藏 jPaste 窗口</div>
+            </div>
+            <ToggleSwitch
+              checked={local.auto_hide_after_copy}
+              onChange={() => handleSave({ auto_hide_after_copy: !local.auto_hide_after_copy })}
+              label="复制后自动隐藏"
+            />
+          </div>
+        </div>
+
         {/* Theme Selector */}
         <div className="px-4 py-5 border-b border-border">
           <div className="text-base font-medium text-foreground mb-0.5">主题</div>
@@ -415,9 +442,61 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Toggle Settings */}
+        {/* Notify Toggle + Opacity Slider */}
+        <div className="px-4 py-5 border-b border-border">
+          <div className="flex justify-between items-center">
+            <div>
+              <div className="text-base font-medium text-foreground mb-0.5">剪贴板通知</div>
+              <div className="text-xs text-muted mt-0.5">捕获到新剪贴板内容时显示通知</div>
+            </div>
+            <ToggleSwitch
+              checked={local.notify_enabled}
+              onChange={() => {
+                const newVal = !local.notify_enabled
+                handleSave({ notify_enabled: newVal })
+                notifyToggled.current = true
+                if (newVal) {
+                  Events.Emit('toast-show-preview', {
+                    title: 'jPaste',
+                    message: '通知示例',
+                    opacity: local.notify_opacity ?? 100,
+                  })
+                } else {
+                  Events.Emit('toast-hide-preview')
+                }
+              }}
+              label="切换剪贴板通知"
+            />
+          </div>
+
+          {local.notify_enabled && (
+            <div className="mt-4">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs text-muted whitespace-nowrap">透明度</span>
+                <input
+                  type="range" min="10" max="100"
+                  value={local.notify_opacity}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value)
+                    setLocal({ ...local, notify_opacity: val })
+                    Events.Emit('toast-show-preview', {
+                      title: 'jPaste',
+                      message: '通知示例',
+                      opacity: val,
+                    })
+                  }}
+                  onMouseUp={() => handleSave({ notify_opacity: local.notify_opacity })}
+                  className="flex-1 cursor-pointer"
+                  style={{ accentColor: 'var(--color-primary)' }}
+                />
+                <span className="text-sm font-medium text-foreground min-w-[40px] text-right">{local.notify_opacity}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Other Toggle Settings */}
         {[
-          { key: 'notify_enabled', label: '剪贴板通知', desc: '捕获到新剪贴板内容时显示通知' },
           { key: 'auto_start', label: '开机自启', desc: '登录时自动启动 jPaste' },
           { key: 'start_minimized', label: '启动时最小化', desc: '启动后最小化到系统托盘（不弹出窗口）' },
         ].map(({ key: k, label, desc }) => (

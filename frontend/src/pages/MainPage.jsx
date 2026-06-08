@@ -137,8 +137,8 @@ export default function MainPage() {
   const handleSelect = useCallback((entry) => {
     setAnimatingId(entry.id)
     setTimeout(() => setAnimatingId(null), 600)
-    useEntry(entry.id, settings.default_action)
-  }, [useEntry, settings.default_action])
+    useEntry(entry.id, settings.default_action, settings.auto_hide_after_copy)
+  }, [useEntry, settings.default_action, settings.auto_hide_after_copy])
 
   const handleImageClick = useCallback((entry) => {
     ImageViewerService.OpenImageViewer(entry.id, activeTag, search)
@@ -161,12 +161,12 @@ export default function MainPage() {
   }, [])
 
   const handleCopy = useCallback((id) => {
-    useEntry(id, 'copy')
-  }, [useEntry])
+    useEntry(id, 'copy', settings.auto_hide_after_copy)
+  }, [useEntry, settings.auto_hide_after_copy])
 
   const handlePaste = useCallback((id) => {
-    useEntry(id, 'paste')
-  }, [useEntry])
+    useEntry(id, 'paste', settings.auto_hide_after_copy)
+  }, [useEntry, settings.auto_hide_after_copy])
 
   const handleCopyAll = useCallback(() => {
     const textContents = entries

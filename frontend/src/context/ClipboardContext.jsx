@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react'
-import { Events } from '@wailsio/runtime'
+import { Events, Window } from '@wailsio/runtime'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
 import { EVENTS } from '../events'
 import { log } from '../logger'
@@ -264,9 +264,10 @@ export function ClipboardProvider({ children, initialSortField, initialSortOrder
     return unsub
   }, [refreshHistory, regexSearch])
 
-  const useEntry = useCallback(async (id, action) => {
+  const useEntry = useCallback(async (id, action, autoHide = false) => {
     try {
       await HistoryService.UseEntry(id, action)
+      if (autoHide) Window.Hide()
       const s = stateRef.current
       refreshHistory(s.search, s.activeTag, s.sortField, s.sortOrder)
     } catch (err) {

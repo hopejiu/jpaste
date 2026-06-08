@@ -21,8 +21,10 @@ type Data struct {
 	SortField         string          `json:"sort_field"`               // "updated_at" / "content_length"
 	SortOrder         string          `json:"sort_order"`               // "asc" / "desc"
 	Theme             string          `json:"theme"`                    // "a" (冷调极简) / "b" (暖调高效) / "c" (深色沉浸)
-	AutoClearSearch   bool            `json:"auto_clear_search"`        // auto clear search on window show
-	AutoClearSeconds  int             `json:"auto_clear_seconds"`       // seconds threshold for auto clear (0 = always clear)
+	AutoClearSearch     bool            `json:"auto_clear_search"`          // auto clear search on window show
+	AutoClearSeconds    int             `json:"auto_clear_seconds"`         // seconds threshold for auto clear (0 = always clear)
+	AutoHideAfterCopy   bool            `json:"auto_hide_after_copy"`       // auto hide window after copy
+	NotifyOpacity       int             `json:"notify_opacity"`             // notification toast opacity 0-100 (0=transparent, 100=opaque)
 }
 
 // SettingsReader provides read-only access to settings.
@@ -54,7 +56,9 @@ func NewService(basePath string) *Service {
 			ActionConfig:   json.RawMessage("{}"),
 			SortField:      "updated_at",
 			SortOrder:      "desc",
-			Theme:          "a",
+			Theme:              "a",
+			AutoHideAfterCopy:  false,
+			NotifyOpacity:      100,
 		},
 	}
 }
@@ -89,8 +93,10 @@ func Defaults() Data {
 		SortField:        "updated_at",
 		SortOrder:        "desc",
 		Theme:            "a",
-		AutoClearSearch:  false,
-		AutoClearSeconds: 30,
+		AutoClearSearch:    false,
+		AutoClearSeconds:   30,
+		AutoHideAfterCopy:  false,
+		NotifyOpacity:      100,
 	}
 }
 
@@ -189,5 +195,7 @@ func changedExceptHotkey(a, b Data) bool {
 		a.SortOrder != b.SortOrder ||
 		a.Theme != b.Theme ||
 		a.AutoClearSearch != b.AutoClearSearch ||
-		a.AutoClearSeconds != b.AutoClearSeconds
+		a.AutoClearSeconds != b.AutoClearSeconds ||
+		a.AutoHideAfterCopy != b.AutoHideAfterCopy ||
+	a.NotifyOpacity != b.NotifyOpacity
 }

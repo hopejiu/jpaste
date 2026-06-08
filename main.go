@@ -299,13 +299,25 @@ func main() {
 	// offscreen at (-9999,-9999) when not active. On a notification:
 	//   1. emit event → frontend renders (async)
 	//   2. 30ms later → position to bottom-right of primary monitor
-	//   3. 3s later → position back offscreen
+	//   3. 3s (real) / 5s (preview) later → position back offscreen
 	// This avoids the WebView2 rendering freeze that occurs on hidden windows.
 	toastEmit = func(name string, data any) {
-		// Inject current theme so the toast window (separate Wails window,
-		// outside <App> component tree) can apply the correct theme class.
+		// Handle hide-preview separately — immediate offscreen, no timer.
+		if name == model.ToastHidePreview {
+			hideToastOffscreen()
+			return
+		}
+
+		// Enrich ToastData with theme and opacity.
+		isPreview := false
 		if td, ok := data.(toast.ToastData); ok {
-			td.Theme = sett.GetSettings().Theme
+			settings := sett.GetSettings()
+			td.Theme = settings.Theme
+			isPreview = td.IsPreview
+			if !isPreview {
+				// Real notification: inject opacity from saved settings.
+				td.Opacity = float64(settings.NotifyOpacity) / 100.0
+			}
 			data = td
 		}
 
@@ -322,7 +334,11 @@ func main() {
 				if toastHideTimer != nil {
 					toastHideTimer.Stop()
 				}
-				toastHideTimer = time.AfterFunc(3*time.Second, func() {
+				hideDelay := 3 * time.Second
+				if isPreview {
+					hideDelay = 5 * time.Second
+				}
+				toastHideTimer = time.AfterFunc(hideDelay, func() {
 					application.InvokeSync(func() {
 						hideToastOffscreen()
 					})
@@ -350,6 +366,35 @@ func main() {
 		default:
 			applog.Info(msg, "component", component)
 		}
+	})
+
+	// Preview toast control — frontend emits these from SettingsPage.
+	app.Event.On("toast-show-preview", func(event *application.CustomEvent) {
+		data, ok := event.Data.(map[string]any)
+		if !ok {
+			return
+		}
+		title, _ := data["title"].(string)
+		if title == "" {
+			title = "jPaste"
+		}
+		message, _ := data["message"].(string)
+		opacity := 100.0
+		if o, ok := data["opacity"].(float64); ok {
+			opacity = o
+		}
+
+		td := toast.ToastData{
+			Title:     title,
+			Message:   message,
+			Opacity:   opacity / 100.0,
+			IsPreview: true,
+		}
+		toastEmit(model.ToastNotification, td)
+	})
+
+	app.Event.On("toast-hide-preview", func(event *application.CustomEvent) {
+		toastEmit(model.ToastHidePreview, nil)
 	})
 
 	// F12 打开开发者工具（调试用，生产构建也需要保留以便排查问题）。

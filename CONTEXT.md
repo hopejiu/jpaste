@@ -83,6 +83,10 @@ A small frameless Wails window shown at the bottom-right of the primary screen w
 
 **Theme-adaptive**: The toast window loads the current theme independently via `SettingsService.GetSettings()` and renders a frosted-glass card using the CSS custom property `--toast-glass-bg` (defined per theme in `style.css`). The icon uses `--color-primary`, title uses `--color-foreground`, subtitle uses `--color-muted` — ensuring visual consistency with the user's selected theme. Runs outside the main `<App>` component tree (no MemoryRouter), rendered directly in `main.jsx` for the `/toast` route.
 
+**Opacity-adjustable**: The toast honors `settings.notify_opacity` (0-100, default 100). Each `toast-notification` event carries the `opacity` field (0.0-1.0) injected by Go's `toastEmit` from the persisted setting. The ToastPage applies it as CSS `opacity` on the root container.
+
+**Preview mode**: In the Settings page, toggling notification on triggers a preview toast via the frontend event `toast-show-preview`. The preview uses `ToastData.IsPreview=true` to skip the normal 3s auto-hide; instead it uses a 5s idle timer that resets on each slider interaction. The `toast-hide-preview` event (triggered by toggle OFF or page unmount) immediately moves the window offscreen. The opacity slider changes the preview's opacity in real-time by re-emitting `toast-show-preview` with the new value.
+
 ### Temporary File
 A `.txt` file created in `%TEMP%` with the selected entry's content, then opened in the user's preferred text editor (VS Code first, then system default).
 
