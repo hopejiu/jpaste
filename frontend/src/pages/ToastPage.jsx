@@ -1,13 +1,27 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Events } from '@wailsio/runtime'
 import { EVENTS } from '../events'
+import { Service as SettingsService } from '../../bindings/jpaste/internal/settings'
+import { log } from '../logger'
 
 export default function ToastPage() {
   const [toastData, setToastData] = useState(null)
   const [themeReady, setThemeReady] = useState(false)
   const [toastOpacity, setToastOpacity] = useState(1)
 
-  // Load initial theme on mount. Subsequent updates come with each event.
+  // Load initial theme immediately so the toast window uses the correct CSS
+  // variables even before the first notification event arrives.
+  useEffect(() => {
+    SettingsService.GetSettings()
+      .then(s => {
+        const theme = s?.theme || 'a'
+        document.documentElement.className = `theme-${theme}`
+      })
+      .catch(e => log.error('ToastPage', 'failed to load initial theme', e))
+  }, [])
+
+  // Listen for toast notifications. Theme is injected by Go to keep the
+  // toast window in sync when the user changes themes and the main window reloads.
   useEffect(() => {
     const unsub = Events.On(EVENTS.TOAST_NOTIFICATION, (raw) => {
       let title = 'jPaste'

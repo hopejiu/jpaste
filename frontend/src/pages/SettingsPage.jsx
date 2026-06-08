@@ -17,6 +17,8 @@ const THEMES = [
   { id: 'a', label: '冷调极简', desc: '青碧主色 · 清爽高效', colors: ['#0D9488', '#F0FDFA', '#FFFFFF'] },
   { id: 'b', label: '靛蓝专注', desc: 'Indigo 经典 · 生产力优先', colors: ['#6366F1', '#F8FAFC', '#FFFFFF'] },
   { id: 'c', label: '深色沉浸', desc: '暗色氛围 · 夜间友好', colors: ['#6C78E0', '#0A0A0A', '#141414'] },
+  { id: 'd', label: '梦幻浅紫', desc: '淡紫主色 · 温柔知性', colors: ['#8B5CF6', '#F8F6FF', '#FFFFFF'] },
+  { id: 'e', label: '柔粉轻语', desc: '粉嫩主色 · 甜美清新', colors: ['#EC4899', '#FFF5F7', '#FFFFFF'] },
 ]
 
 function parseHotkey(hotkey) {
@@ -417,7 +419,7 @@ export default function SettingsPage() {
                         className="w-5 h-5 rounded-full"
                         style={{
                           background: c,
-                          border: i === 2 && t.id === 'c' ? '1px solid rgba(255,255,255,0.1)' : '2px solid var(--color-border)',
+                          border: i === 2 && t.id === 'c' ? '1px solid rgba(255,255,255,0.15)' : '2px solid var(--color-border)',
                         }}
                       />
                     ))}

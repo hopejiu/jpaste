@@ -8,7 +8,7 @@ import (
 
 // ToastData holds the content for a single toast notification.
 // Theme is injected by main.go at emit time so the toast window
-// (a separate Wails window) can apply the correct theme class.
+// (a separate Wails window) can stay in sync after theme changes.
 type ToastData struct {
 	Title     string  `json:"title"`
 	Message   string  `json:"message"`

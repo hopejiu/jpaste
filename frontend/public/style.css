@@ -126,6 +126,86 @@ body {
   --shadow-popup: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
+/* ===== Theme D: 梦幻浅紫 ===== */
+.theme-d {
+  --color-primary: #8B5CF6;
+  --color-primary-hover: #7C3AED;
+  --color-accent: #A78BFA;
+  --color-background: #F8F6FF;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #EDE9FE;
+  --color-elevated: #FFFFFF;
+  --color-foreground: #1E1B2A;
+  --color-muted: #7C788A;
+  --color-border: rgba(0, 0, 0, 0.07);
+  --color-destructive: #DC2626;
+  --color-ring: rgba(139, 92, 246, 0.28);
+  --color-favorite: #F59E0B;
+  --color-success: #10B981;
+  --color-badge-file: #D97706;
+  --color-badge-file-bg: rgba(217, 119, 6, 0.12);
+  --color-image-bg: #1a1a2e;
+  --color-titlebar: #F4F2FA;
+  --color-separator: rgba(0, 0, 0, 0.09);
+
+  --color-primary-alpha-04: color-mix(in srgb, var(--color-primary) 4%, transparent);
+  --color-primary-alpha-06: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  --color-primary-alpha-08: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  --color-primary-alpha-12: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  --color-primary-alpha-15: color-mix(in srgb, var(--color-primary) 15%, transparent);
+
+  --toast-glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(139, 92, 246, 0.15);
+  --glass-shadow: 0 4px 20px rgba(139, 92, 246, 0.06);
+  --glass-blur: 20px;
+
+  --shadow-glass: 0 2px 8px rgba(139, 92, 246, 0.04), 0 8px 24px rgba(139, 92, 246, 0.06);
+  --shadow-glass-lg: 0 4px 16px rgba(139, 92, 246, 0.06), 0 12px 40px rgba(139, 92, 246, 0.08);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-popup: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* ===== Theme E: 柔粉轻语 ===== */
+.theme-e {
+  --color-primary: #EC4899;
+  --color-primary-hover: #DB2777;
+  --color-accent: #F472B6;
+  --color-background: #FFF5F7;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #FCE7F3;
+  --color-elevated: #FFFFFF;
+  --color-foreground: #2B1A22;
+  --color-muted: #8C7A80;
+  --color-border: rgba(0, 0, 0, 0.07);
+  --color-destructive: #DC2626;
+  --color-ring: rgba(236, 72, 153, 0.28);
+  --color-favorite: #F59E0B;
+  --color-success: #10B981;
+  --color-badge-file: #D97706;
+  --color-badge-file-bg: rgba(217, 119, 6, 0.12);
+  --color-image-bg: #1a1a2e;
+  --color-titlebar: #FDF2F5;
+  --color-separator: rgba(0, 0, 0, 0.09);
+
+  --color-primary-alpha-04: color-mix(in srgb, var(--color-primary) 4%, transparent);
+  --color-primary-alpha-06: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  --color-primary-alpha-08: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  --color-primary-alpha-12: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  --color-primary-alpha-15: color-mix(in srgb, var(--color-primary) 15%, transparent);
+
+  --toast-glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(236, 72, 153, 0.15);
+  --glass-shadow: 0 4px 20px rgba(236, 72, 153, 0.06);
+  --glass-blur: 20px;
+
+  --shadow-glass: 0 2px 8px rgba(236, 72, 153, 0.04), 0 8px 24px rgba(236, 72, 153, 0.06);
+  --shadow-glass-lg: 0 4px 16px rgba(236, 72, 153, 0.06), 0 12px 40px rgba(236, 72, 153, 0.08);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-popup: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
 /* ===== Shared Theme Tokens ===== */
 :root {
   --radius-sm: 6px;
