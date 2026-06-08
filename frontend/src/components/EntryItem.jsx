@@ -199,22 +199,20 @@ export default function EntryItem({
                 )
               }
 
-              // Favorite star (not imgOnly).
-              if (!imgOnly) {
-                const curIdx = aidx++
-                actionLabels[curIdx] = entry.is_favorite ? '取消收藏' : '收藏'
-                items.push(
-                  <button
-                    key="favorite"
-                    data-action-btn={curIdx}
-                    className={`w-7 h-7 flex items-center justify-center border-none bg-transparent cursor-pointer rounded transition-all duration-fast flex-shrink-0 ${entry.is_favorite ? 'text-favorite' : 'text-muted'} ${HOVER_RING} ${selectedActionIdx === curIdx ? 'ring-2 ring-primary ring-inset' : ''}`}
-                    onClick={(e) => { e.stopPropagation(); onToggleFavorite(entry.id, !entry.is_favorite) }}
-                    title={actionLabels[curIdx]}
-                  >
-                    <Star size={14} fill={entry.is_favorite ? 'var(--color-favorite)' : 'none'} />
-                  </button>
-                )
-              }
+              // Favorite star.
+              const favIdx = aidx++
+              actionLabels[favIdx] = entry.is_favorite ? '取消收藏' : '收藏'
+              items.push(
+                <button
+                  key="favorite"
+                  data-action-btn={favIdx}
+                  className={`w-7 h-7 flex items-center justify-center border-none bg-transparent cursor-pointer rounded transition-all duration-fast flex-shrink-0 ${entry.is_favorite ? 'text-favorite' : 'text-muted'} ${HOVER_RING} ${selectedActionIdx === favIdx ? 'ring-2 ring-primary ring-inset' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); onToggleFavorite(entry.id, !entry.is_favorite) }}
+                  title={actionLabels[favIdx]}
+                >
+                  <Star size={14} fill={entry.is_favorite ? 'var(--color-favorite)' : 'none'} />
+                </button>
+              )
 
               // Open in editor (not imgOnly).
               if (!imgOnly) {
