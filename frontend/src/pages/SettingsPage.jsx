@@ -138,6 +138,17 @@ export default function SettingsPage() {
     cfg[action.id] = { ...action.config, enabled: !action.config.enabled }
     handleSave({ action_config: cfg })
   }
+  
+  const handleContainerKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      if (showClearModal) {
+        setShowClearModal(false)
+      } else {
+        navigate('/')
+      }
+    }
+  }
 
   const displayKey = [mods.join('+'), key].filter(Boolean).join(' + ')
 
