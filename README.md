@@ -27,7 +27,7 @@ Windows 剪贴板管理器，基于 Wails v3 + React。
 | `Ctrl+L` | 聚焦搜索框（全选） |
 | `Ctrl+E` | 在编辑器中打开（优先 VS Code） |
 | `Ctrl+1~9` | 执行对应条目默认操作 |
-| `Ctrl+Enter` | 强制粘贴（覆盖默认操作） |
+| `Ctrl+C` | 复制选中条目 |
 | `←` / `→` / `Tab` | 切换标签页 |
 | `↑` / `↓` | 上下移动条目焦点 |
 | `Enter` | 执行焦点条目默认操作 |
@@ -80,8 +80,10 @@ wails3 build
 | 后端 | Go 1.25 + Wails v3 + SQLite (`modernc.org/sqlite`) |
 | 前端 | React 18 + Vite 8 + React Router + Lucide Icons |
 | 剪贴板 | `lxn/win` — Win32 API，格式枚举/来源检测/粘贴模拟 |
-| 热键 | `golang.design/x/hotkey` — 全局键盘钩子 |
+| 热键 | `golang.design/x/hotkey` — 全局键盘钩子（Service 结构体封装） |
 | 存储 | `%APPDATA%/jPaste/clipboard.db` + `%APPDATA%/jPaste/images/` |
+| 共享工具 | `internal/util` — `SelfWriteTracker`（自写入跟踪）、`FormatInt`（整数转字符串，避免引入 fmt） |
+| 共享类型 | `internal/viewers` — 为四个查看器服务包提供统一 `CreateWindowFunc` 类型 |
 ## 架构
 
 ```
@@ -93,9 +95,11 @@ wails3 build
 ├──────────────────────────────────────────────┤
 │  Go 后端                                      │
 │  Clipboard · History · Sync · Settings         │
-│  FileOp · FiloStack · Hotkey                   │
-│  ImageStore · JsonViewer · ImageViewer         │
+│  FileOp · FiloStack · Hotkey (Service 结构体)  │
+│  ImageStore · Curl/Json/Ws/ImageViewer        │
 │  Toast (事件驱动通知) · Log (日志中继)          │
+│  Viewers (共享 CreateWindowFunc 类型)          │
+│  Util (SelfWriteTracker · FormatInt)           │
 │  SQLite + 图片文件存储                          │
 │  系统托盘 + 全局热键                           │
 └──────────────────────────────────────────────┘
@@ -107,6 +111,11 @@ wails3 build
 - **事件系统**: Go 端通过 `app.Event.Emit` 广播事件，前端通过 `@wailsio/runtime` 的 `Events.On` 监听。前端日志通过 `Events.Emit('frontend-log', ...)` 回传后端写入统一日志文件。
 - **剪贴板监控**: 消息窗口 (`HWND_MESSAGE`) + `AddClipboardFormatListener`，无需轮询。
 - **粘贴顺序控制**: 键盘钩子 (`WH_KEYBOARD_LL`) 拦截 Ctrl+V，从内部栈/队列中弹出内容。
+- **自写入跟踪**: `SelfWriteTracker`（`internal/util/tracker.go`）统一管理 clipboard 和 filostack 的自写入检测，消除代码克隆。
+- **前端通用组件**:
+  - `Modal.jsx` — 通用模态框（ESC/遮罩关闭、尺寸变体），替代 4 处手写的遮罩层
+  - `TransformModal.jsx` — 解码类操作的通用 UI（输入→解码→输出+复制）
+  - `useEscapeHide.js` — 共享的 Escape 隐藏窗口钩子，替代 3 处重复实现
 
 ## License
 

@@ -1,4 +1,4 @@
-import { Service as WsViewerService } from '../../bindings/jpaste/internal/wssviewer'
+import { WsViewerService } from '../../bindings/jpaste/internal/viewers'
 
 function openWsViewer(_content, entryId) {
   WsViewerService.OpenWsViewer(entryId)

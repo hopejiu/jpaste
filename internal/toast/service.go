@@ -1,7 +1,7 @@
 package toast
 
 import (
-	"jpaste/internal/events"
+	"jpaste/internal/model"
 
 	applog "jpaste/internal/log"
 )
@@ -32,5 +32,5 @@ func NewService(emitFunc func(name string, data any)) *Service {
 // The window's Go-side listener handles positioning, showing, and auto-hiding.
 func (s *Service) ShowToast(title, message string) {
 	applog.Info("toast: show", "title", title, "message", message)
-	s.emitFunc(events.ToastNotification, ToastData{Title: title, Message: message})
+	s.emitFunc(model.ToastNotification, ToastData{Title: title, Message: message})
 }

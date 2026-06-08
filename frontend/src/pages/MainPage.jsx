@@ -2,18 +2,19 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useClipboard, TAGS, TAG_FAVORITE } from '../context/ClipboardContext'
 import { useApp } from '../context/AppContext'
 import { Service as FileService } from '../../bindings/jpaste/internal/fileop'
-import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
-import { Service as ImageViewerService } from '../../bindings/jpaste/internal/imageviewer'
+import { ImageViewerService } from '../../bindings/jpaste/internal/viewers'
 import { Service as FiloService } from '../../bindings/jpaste/internal/filostack'
 import { getById } from '../actions'
 import { useActionDetection } from '../hooks/useActionDetection'
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation'
+import { useImageThumbnail } from '../hooks/useImageThumbnail'
 import { Copy, CheckCircle, HelpCircle } from 'lucide-react'
 import SearchBar from '../components/SearchBar'
 import TitleBar from '../components/TitleBar'
 import TagTabs from '../components/TagTabs'
 import EntryList from '../components/EntryList'
 import ActionModal from '../components/ActionModal'
+import Modal from '../components/Modal'
 import { log } from '../logger'
 import ShortcutHelpModal from '../components/ShortcutHelpModal'
 
@@ -51,9 +52,7 @@ export default function MainPage() {
   const hiddenTimeRef = useRef(null) // 记录窗口隐藏的时间戳
 
   // Lazy-loaded image thumbnails for list items.
-  const thumbnailsRef = useRef({})
-  const [, setThumbTick] = useState(0)
-  const thumbObserverRef = useRef(null)
+  const { thumbnailsRef } = useImageThumbnail(listRef, entries)
 
   const closeModal = useCallback(() => setModal(null), [])
 
@@ -127,42 +126,6 @@ export default function MainPage() {
       window.removeEventListener('blur', handleBlur)
     }
   }, [settings.auto_clear_search, settings.auto_clear_seconds, setSearch, setActiveTag, isRegex, toggleRegex])
-
-  // Lazy-load image thumbnails when they scroll into view.
-  useEffect(() => {
-    const loadThumb = async (entryId) => {
-      const cur = thumbnailsRef.current
-      if (cur[entryId]?.url || cur[entryId]?.loading) return
-      cur[entryId] = { url: '', loading: true, error: false }
-      setThumbTick(t => t + 1)
-      try {
-        const url = await HistoryService.GetImageDataURL(entryId)
-        cur[entryId] = { url, loading: false, error: false }
-      } catch {
-        cur[entryId] = { url: '', loading: false, error: true }
-      }
-      setThumbTick(t => t + 1)
-    }
-
-    thumbObserverRef.current = new IntersectionObserver((observed) => {
-      for (const obs of observed) {
-        if (obs.isIntersecting) {
-          const id = parseInt(obs.target.dataset.thumbId, 10)
-          if (id) loadThumb(id)
-        }
-      }
-    }, { root: listRef.current, rootMargin: '200px' })
-
-    return () => thumbObserverRef.current?.disconnect()
-  }, [])
-
-  // Register image entries with thumbnail observer when entries change.
-  useEffect(() => {
-    const observer = thumbObserverRef.current
-    if (!observer || !listRef.current) return
-    const items = listRef.current.querySelectorAll('[data-thumb-id]')
-    for (const item of items) observer.observe(item)
-  }, [entries])
 
   // --- Handlers ---
 
@@ -411,24 +374,13 @@ export default function MainPage() {
       </ActionModal>
 
       {/* Error Alert Modal */}
-      {errorAlert && (
-        <div
-          className="fixed inset-0 z-[3000] flex items-center justify-center animate-[fadeIn_150ms_ease-out]"
-          style={{ background: 'rgba(0,0,0,0.4)' }}
+      <Modal open={!!errorAlert} onClose={() => setErrorAlert(null)} title={errorAlert?.title || ''} size="sm">
+        <p className="m-0 mb-5 text-sm text-muted leading-[1.5]">{errorAlert?.message}</p>
+        <button
+          className="w-full py-2 rounded-md border-none bg-primary text-white text-sm font-medium cursor-pointer font-inherit transition-opacity duration-fast hover:opacity-90"
           onClick={() => setErrorAlert(null)}
-        >
-          <div className="bg-elevated border border-border rounded-lg shadow-glass-lg p-6 w-[340px] max-w-[90vw]" onClick={e => e.stopPropagation()}>
-            <h3 className="m-0 text-lg font-semibold text-foreground mb-2">{errorAlert.title}</h3>
-            <p className="m-0 mb-5 text-sm text-muted leading-[1.5]">{errorAlert.message}</p>
-            <button
-              className="w-full py-2 rounded-md border-none bg-primary text-white text-sm font-medium cursor-pointer font-inherit transition-opacity duration-fast hover:opacity-90"
-              onClick={() => setErrorAlert(null)}
-            >
-              确定
-            </button>
-          </div>
-        </div>
-      )}
+        >确定</button>
+      </Modal>
     </div>
   )
 }

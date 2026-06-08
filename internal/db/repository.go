@@ -1,4 +1,4 @@
-package repository
+package db
 
 import (
 	"database/sql"
@@ -8,18 +8,17 @@ import (
 )
 
 // Repository is the single source of truth for all SQLite data access.
-// Both history.Service and sync.Service consume it through their own interface adapters.
 type Repository struct {
 	db *sql.DB
 }
 
-// New creates a Repository backed by the given SQLite connection.
-func New(db *sql.DB) *Repository {
+// NewRepository creates a Repository backed by the given SQLite connection.
+func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
 // ---------------------------------------------------------------------------
-// Entry queries (used by history — pagination, filtering, dedup)
+// Entry queries
 // ---------------------------------------------------------------------------
 
 // EntryRow is a single row from the clipboard_entry table.
@@ -36,7 +35,6 @@ type EntryRow struct {
 
 func (r *Repository) QueryHistory(search string, tagMask int, afterCursor1 string, afterID int64, limit int, sortField, sortOrder string) ([]EntryRow, error) {
 	baseSQL := `SELECT e.id, e.content_hash, e.source_exe, e.source_title, e.is_favorite, e.created_at, e.updated_at, e.content_length FROM clipboard_entry e`
-
 	var conditions []string
 	var args []any
 
@@ -101,7 +99,6 @@ func (r *Repository) LoadFormats(ids []int64) (map[int64][]model.FormatEntry, er
 		placeholders = append(placeholders, ',', '?')
 		idArgs[i] = ids[i]
 	}
-
 	rows, err := r.db.Query(
 		`SELECT entry_id, format_type, COALESCE(content, ''), COALESCE(file_path, '') FROM clipboard_format WHERE entry_id IN (`+string(placeholders)+`)`,
 		idArgs...,
@@ -208,7 +205,6 @@ func (r *Repository) ToggleFavorite(id int64, value bool) error {
 	return err
 }
 
-// Stats holds aggregate clipboard statistics.
 type Stats struct {
 	Count      int64 `json:"count"`
 	TotalBytes int64 `json:"total_bytes"`
@@ -227,7 +223,6 @@ func (r *Repository) GetStats() (Stats, error) {
 
 func (r *Repository) Cleanup(retainDays int) (int64, []string, error) {
 	cutoff := fmt.Sprintf("strftime('%%Y-%%m-%%dT%%H:%%M:%%f', 'now', '-%d days')", retainDays)
-
 	var paths []string
 	rows, err := r.db.Query(
 		`SELECT f.file_path FROM clipboard_format f
@@ -243,7 +238,6 @@ func (r *Repository) Cleanup(retainDays int) (int64, []string, error) {
 		}
 		rows.Close()
 	}
-
 	result, err := r.db.Exec(
 		`DELETE FROM clipboard_entry WHERE updated_at < `+cutoff+` AND is_favorite = 0`,
 	)
@@ -276,7 +270,6 @@ func (r *Repository) ClearAll(keepFavorites bool) ([]string, error) {
 			rows.Close()
 		}
 	}
-
 	if keepFavorites {
 		_, err := r.db.Exec(`DELETE FROM clipboard_entry WHERE is_favorite = 0`)
 		return paths, err
@@ -329,5 +322,3 @@ func (r *Repository) QueryImageEntryIDs(tagMask int, search string) ([]int64, er
 	}
 	return ids, nil
 }
-
-

@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Window } from '@wailsio/runtime'
-
+import { useJsonEditor } from '../hooks/useJsonEditor'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
-
 import { log } from '../logger'
 
 export default function JsonViewPage() {
@@ -12,10 +11,18 @@ export default function JsonViewPage() {
   const [jsonData, setJsonData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const containerRef = useRef(null)
-  const editorRef = useRef(null)
   const fetchedRef = useRef(false)
-  const JSONEditorRef = useRef(null)
+  const { containerRef, updateJson, destroyEditor } = useJsonEditor()
+
+  // Capture-phase Escape handler: fires before jsoneditor's internal handlers
+  // to reliably close the window (jsoneditor may stopPropagation on Escape).
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); Window.Close() }
+    }
+    document.addEventListener('keydown', handler, true)
+    return () => document.removeEventListener('keydown', handler, true)
+  }, [])
 
   log.info('JsonViewPage', 'render, id=', entryId, 'loading=', loading, 'hasData=', !!jsonData)
 
@@ -55,73 +62,13 @@ export default function JsonViewPage() {
   }, [entryId])
 
   useEffect(() => {
-    if (!jsonData || !containerRef.current) {
-      log.info('JsonViewPage', 'editor init skipped, container=', !!containerRef.current, 'data=', !!jsonData)
-      return
-    }
-    if (editorRef.current) {
-      log.info('JsonViewPage', 'editor already exists, updating data')
-      editorRef.current.update(jsonData)
-      return
-    }
-
-    log.info('JsonViewPage', 'loading jsoneditor dynamically')
-    let cancelled = false
-    Promise.all([
-      import('jsoneditor'),
-      import('jsoneditor/dist/jsoneditor.css'),
-    ]).then(([{ default: JSONEditor }]) => {
-      if (cancelled) return
-      JSONEditorRef.current = JSONEditor
-      log.info('JsonViewPage', 'creating JSONEditor instance')
-
-      // 从 localStorage 读取上次使用的模式，默认为 tree
-      const savedMode = (() => {
-        try { return localStorage.getItem('jpaste-json-mode') || 'tree' } catch { return 'tree' }
-      })()
-
-      const editor = new JSONEditor(containerRef.current, {
-        mode: savedMode,
-        modes: ['tree', 'code'],
-        mainMenuBar: true,
-        navigationBar: true,
-        statusBar: true,
-        search: true,
-        history: true,
-        indentation: 2,
-        sortObjectKeys: false,
-        limitDragging: false,
-        onModeChange: (newMode) => {
-          try { localStorage.setItem('jpaste-json-mode', newMode) } catch { /* ignore */ }
-        },
-      }, jsonData)
-
-      editorRef.current = editor
-      log.info('JsonViewPage', 'editor created OK, mode=', savedMode)
-    })
-    return () => { cancelled = true }
+    if (!jsonData) return
+    log.info('JsonViewPage', 'updating/creating editor')
+    updateJson(jsonData)
   }, [jsonData])
 
   useEffect(() => {
-    return () => {
-      if (editorRef.current) {
-        log.info('JsonViewPage', 'destroying editor')
-        editorRef.current.destroy()
-        editorRef.current = null
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key !== 'Escape') return
-      const tag = document.activeElement?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return
-      e.preventDefault()
-      Window.Hide()
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
+    return () => destroyEditor()
   }, [])
 
   return (

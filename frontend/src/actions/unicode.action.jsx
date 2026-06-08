@@ -1,5 +1,4 @@
-import { useState, useMemo } from 'react'
-import { formBody, label as lbl, textarea, output, errorMsg, resultText } from './actionStyles'
+import TransformModal from '../components/TransformModal'
 
 function decodeUnicode(input) {
   if (!input.trim()) return { decoded: '', error: null }
@@ -13,32 +12,6 @@ function decodeUnicode(input) {
   }
 }
 
-function UnicodeModal({ content, onClose }) {
-  const [input, setInput] = useState(content.trim())
-  const { decoded, error } = useMemo(() => decodeUnicode(input), [input])
-
-  return (
-    <div style={formBody}>
-      <div style={lbl}>Unicode 转义原文</div>
-      <textarea
-        style={textarea}
-        value={input}
-        onChange={e => setInput(e.target.value)}
-        spellCheck={false}
-        autoFocus
-      />
-      <div style={lbl}>解码结果</div>
-      <div style={output}>
-        {error ? (
-          <span style={errorMsg}>{error}</span>
-        ) : (
-          <pre style={resultText}>{decoded}</pre>
-        )}
-      </div>
-    </div>
-  )
-}
-
 export default {
   id: 'unicode',
   label: 'Unicode 解码',
@@ -49,5 +22,7 @@ export default {
   detect(content) {
     return /\\u[0-9a-fA-F]{4}/.test(content) && content.length <= 2000
   },
-  Component: UnicodeModal,
+  Component: ({ content }) => (
+    <TransformModal content={content} decode={decodeUnicode} inputLabel="Unicode 转义原文" outputLabel="解码结果" showCopy={false} />
+  ),
 }

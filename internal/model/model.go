@@ -14,14 +14,26 @@ const (
 )
 
 // ---------------------------------------------------------------------------
+// Event name constants (moved from internal/events)
+// ---------------------------------------------------------------------------
+const (
+	ClipboardUpdated  = "clipboard-updated"
+	WindowShown       = "window-shown"
+	WindowHiding      = "window-hiding"
+	Navigate          = "navigate"
+	PasteOrderChanged = "paste-order-changed"
+	FrontendLog       = "frontend-log"
+	ToastNotification = "toast-notification"
+)
+
+// ---------------------------------------------------------------------------
 // Tag constants (bitmask)
 // ---------------------------------------------------------------------------
 const (
-	TagText  = 1 << 0 // plain text only
-	TagImage = 1 << 2 // CF_DIB or CF_DIBV5
-	TagURL   = 1 << 3 // CF_UNICODETEXT starts with http(s)://
-	TagFile  = 1 << 4 // CF_HDROP or windows path pattern
-
+	TagText     = 1 << 0 // plain text only
+	TagImage    = 1 << 2 // CF_DIB or CF_DIBV5
+	TagURL      = 1 << 3 // CF_UNICODETEXT starts with http(s)://
+	TagFile     = 1 << 4 // CF_HDROP or windows path pattern
 	TagFavorite = 1 << 5 // virtual: used only for frontend filtering
 )
 
@@ -33,7 +45,7 @@ const (
 type Entry struct {
 	ID            int64         `json:"id"`
 	ContentHash   string        `json:"content_hash"`
-	Content       string        `json:"content"` // CF_UNICODETEXT for backward compat
+	Content       string        `json:"content"`
 	SourceEXE     string        `json:"source_exe"`
 	SourceTitle   string        `json:"source_title"`
 	Formats       []FormatEntry `json:"formats"`
@@ -53,7 +65,7 @@ type FormatEntry struct {
 // CapturedFormat is a raw format payload read from the system clipboard.
 type CapturedFormat struct {
 	FormatType uint32
-	Text       string // non-empty for text formats (CF_UNICODETEXT, CF_HTML, etc.)
+	Text       string // non-empty for text formats
 	RawData    []byte // non-nil for binary formats (CF_DIB / CF_DIBV5)
 }
 
@@ -62,14 +74,13 @@ type CapturedData struct {
 	Formats     []CapturedFormat
 	SourceEXE   string
 	SourceTitle string
-	PrimaryHash string // SHA-256 of CF_UNICODETEXT, or image bytes if text is absent
+	PrimaryHash string
 }
 
 // ---------------------------------------------------------------------------
 // Tag / format helper functions
 // ---------------------------------------------------------------------------
 
-// ComputeTagMask determines tags from captured formats.
 func ComputeTagMask(formats []CapturedFormat) int {
 	mask := 0
 	hasImage := false
@@ -100,20 +111,18 @@ func ComputeTagMask(formats []CapturedFormat) int {
 	if hasFile {
 		mask |= TagFile
 	}
-	// text = plain text without richer formats
 	if hasPlainText && !hasImage && !hasFile {
 		mask |= TagText
 	}
-
 	return mask
 }
 
-// IsTextFormat reports whether f is a text clipboard format (CF_UNICODETEXT, CF_TEXT).
+// IsTextFormat reports whether f is a text clipboard format.
 func IsTextFormat(f uint32) bool {
 	return f == CF_UNICODETEXT || f == CF_TEXT
 }
 
-// IsImageFormat reports whether f is an image clipboard format (CF_DIB, CF_DIBV5).
+// IsImageFormat reports whether f is an image clipboard format.
 func IsImageFormat(f uint32) bool {
 	return f == CF_DIB || f == CF_DIBV5
 }
@@ -123,16 +132,13 @@ func IsHdropFormat(f uint32) bool {
 	return f == CF_HDROP
 }
 
-// isWindowsPath reports whether s looks like a Windows path (C:\... or UNC).
 func isWindowsPath(s string) bool {
 	if len(s) < 3 {
 		return false
 	}
-	// C:\... or c:\...
 	if s[1] == ':' && s[2] == '\\' && ((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= 'a' && s[0] <= 'z')) {
 		return true
 	}
-	// UNC path: \\...
 	if len(s) >= 2 && s[0] == '\\' && s[1] == '\\' {
 		return true
 	}
@@ -140,11 +146,9 @@ func isWindowsPath(s string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// Primary text extraction (shared logic)
+// Primary text extraction
 // ---------------------------------------------------------------------------
 
-// PrimaryText returns the main text content from captured formats.
-// Priority: CF_UNICODETEXT > CF_HDROP > any format with text.
 func PrimaryText(formats []CapturedFormat) string {
 	for _, f := range formats {
 		if f.FormatType == CF_UNICODETEXT {
@@ -164,8 +168,6 @@ func PrimaryText(formats []CapturedFormat) string {
 	return ""
 }
 
-// PrimaryTextFromEntries returns the main text content from format entries.
-// Priority: CF_UNICODETEXT > CF_HDROP > any format with content.
 func PrimaryTextFromEntries(formats []FormatEntry) string {
 	for _, f := range formats {
 		if f.FormatType == CF_UNICODETEXT {
@@ -185,7 +187,6 @@ func PrimaryTextFromEntries(formats []FormatEntry) string {
 	return ""
 }
 
-// TextLength returns the length of the primary text content.
 func TextLength(formats []CapturedFormat) int {
 	text := PrimaryText(formats)
 	return len(text)

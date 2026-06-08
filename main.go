@@ -10,21 +10,16 @@ import (
 	"unsafe"
 
 	"jpaste/internal/clipboard"
-	"jpaste/internal/curlviewer"
 	"jpaste/internal/db"
-	"jpaste/internal/events"
 	"jpaste/internal/fileop"
 	"jpaste/internal/filostack"
 	"jpaste/internal/history"
 	"jpaste/internal/hotkey"
-	"jpaste/internal/imageviewer"
-	"jpaste/internal/jsonviewer"
 	applog "jpaste/internal/log"
 	"jpaste/internal/model"
-	"jpaste/internal/repository"
 	"jpaste/internal/settings"
 	"jpaste/internal/toast"
-	"jpaste/internal/wssviewer"
+	"jpaste/internal/viewers"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	wailsEvent "github.com/wailsapp/wails/v3/pkg/events"
@@ -86,7 +81,7 @@ func main() {
 	conn := must(db.Open(appData))
 	defer conn.Close()
 
-	repo := repository.New(conn)
+	repo := db.NewRepository(conn)
 
 	sett := settings.NewService(appData)
 	if err := sett.Load(); err != nil {
@@ -148,25 +143,25 @@ func main() {
 	// JSON viewer — opens a separate window for structured JSON viewing.
 	var createJsonWindowFn func(path, title string)
 
-	jsonViewerSvc := jsonviewer.NewService(func(path string) {
+	jsonViewerSvc := viewers.NewJSONViewerService(func(path string) {
 		if createJsonWindowFn != nil {
 			createJsonWindowFn(path, "JSON 查看")
 		}
 	})
 
-	imageViewerSvc := imageviewer.NewService(func(path string) {
+	imageViewerSvc := viewers.NewImageViewerService(func(path string) {
 		if createJsonWindowFn != nil {
 			createJsonWindowFn(path, "图片查看")
 		}
 	})
 
-	curlViewerSvc := curlviewer.NewService(func(path string) {
+	curlViewerSvc := viewers.NewCurlViewerService(func(path string) {
 		if createJsonWindowFn != nil {
 			createJsonWindowFn(path, "HTTP 调试")
 		}
 	})
 
-	wssViewerSvc := wssviewer.NewService(func(path string) {
+	wssViewerSvc := viewers.NewWsViewerService(func(path string) {
 		if createJsonWindowFn != nil {
 			createJsonWindowFn(path, "WS 调试")
 		}
@@ -337,7 +332,7 @@ func main() {
 	}
 
 	// Frontend log relay — listen for Events.Emit('frontend-log', ...) from JS.
-	app.Event.On(events.FrontendLog, func(event *application.CustomEvent) {
+	app.Event.On(model.FrontendLog, func(event *application.CustomEvent) {
 		data, ok := event.Data.(map[string]any)
 		if !ok {
 			return
@@ -393,7 +388,7 @@ func main() {
 
 	doPaste = func() {
 		if win.IsVisible() {
-			win.EmitEvent(events.WindowHiding, nil)
+			win.EmitEvent(model.WindowHiding, nil)
 		}
 		win.Hide()
 		time.Sleep(50 * time.Millisecond) // wait for WebView2 to tear down before Paste()
@@ -402,7 +397,8 @@ func main() {
 	}
 
 	setupSystemTray(app, win)
-	setupGlobalHotkey(win, sett)
+	hkSvc := hotkey.NewService()
+	setupGlobalHotkey(win, hkSvc, sett)
 
 	win.RegisterHook(wailsEvent.Common.WindowClosing, func(e *application.WindowEvent) {
 		if quitting {
@@ -449,12 +445,12 @@ func main() {
 			applog.Info("paste order change", "order", new.PasteOrder)
 			filoStack.SetMode(new.PasteOrder)
 			if handle.app != nil {
-				handle.Emit(events.PasteOrderChanged, new.PasteOrder)
+				handle.Emit(model.PasteOrderChanged, new.PasteOrder)
 			}
 		}
 	})
 
-	defer hotkey.UnregisterAll()
+	defer hkSvc.UnregisterAll()
 	defer filoStack.ServiceShutdown()
 
 	// Activate paste order if stored from a previous session.
@@ -483,7 +479,7 @@ func setupSystemTray(app *application.App, win application.Window) {
 	})
 	menu.Add("设置").OnClick(func(ctx *application.Context) {
 		applog.Info("tray: 设置")
-		win.EmitEvent(events.Navigate, "/settings")
+		win.EmitEvent(model.Navigate, "/settings")
 		showWindow(win)
 	})
 	menu.AddSeparator()
@@ -505,14 +501,14 @@ func setupSystemTray(app *application.App, win application.Window) {
 	tray.AttachWindow(win)
 }
 
-func setupGlobalHotkey(win application.Window, sett *settings.Service) {
+func setupGlobalHotkey(win application.Window, hkSvc *hotkey.Service, sett *settings.Service) {
 	toggle := func() {
 		if win.IsVisible() {
 			applog.Info("hotkey: hiding")
 			hideWindow(win)
 		} else {
 			applog.Info("hotkey: showing")
-			win.EmitEvent(events.Navigate, "/")
+			win.EmitEvent(model.Navigate, "/")
 			showWindow(win)
 		}
 	}
@@ -520,7 +516,7 @@ func setupGlobalHotkey(win application.Window, sett *settings.Service) {
 	// Initial registration (fire-and-forget at startup).
 	keystr := sett.GetSettings().Hotkey
 	applog.Info("setting up global hotkey", "key", keystr)
-	if err := hotkey.Register(keystr, toggle); err != nil {
+	if err := hkSvc.Register(keystr, toggle); err != nil {
 		applog.Warn("register global hotkey", "key", keystr, "error", err)
 	} else {
 		applog.Info("global hotkey registered", "key", keystr)
@@ -529,7 +525,7 @@ func setupGlobalHotkey(win application.Window, sett *settings.Service) {
 	// On change: try new first, swap on success, return error on failure.
 	sett.OnHotkeyChange(func(_, newK string) error {
 		applog.Info("hotkey change requested", "key", newK)
-		if err := hotkey.RegisterAndSwap(newK, toggle); err != nil {
+		if err := hkSvc.RegisterAndSwap(newK, toggle); err != nil {
 			applog.Warn("register global hotkey", "key", newK, "error", err)
 			return err
 		}
@@ -556,7 +552,7 @@ func showWindow(win application.Window) {
 	win.Center()
 	win.Show()
 	win.Focus()
-	win.EmitEvent(events.WindowShown, nil)
+	win.EmitEvent(model.WindowShown, nil)
 }
 
 func hideWindow(win application.Window) {
@@ -568,7 +564,7 @@ func hideWindow(win application.Window) {
 	// state can be stale during async window operations. Always attempt Hide();
 	// hiding an already-hidden window is a safe no-op.
 	applog.Info("hideWindow: hiding")
-	win.EmitEvent(events.WindowHiding, nil)
+	win.EmitEvent(model.WindowHiding, nil)
 	// Move offscreen BEFORE hiding to prevent the WebView2 teardown flash
 	// (transparent/semi-transparent frame that Windows shows momentarily).
 	win.SetPosition(-9999, -9999)

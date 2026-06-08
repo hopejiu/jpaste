@@ -29,9 +29,8 @@ type Service struct {
 	// hook management
 	hookStop func()
 
+	selfTracker     util.SelfWriteTracker
 	selfPasteUntil time.Time
-	selfWriteHash  string
-	selfWriteTime  time.Time
 
 	onWriteText func(text string) bool
 	onNotify    func(title, msg string)
@@ -105,12 +104,9 @@ func (s *Service) Push(text string) {
 		return
 	}
 	// Skip push for self-writes.
-	if s.selfWriteHash != "" && time.Since(s.selfWriteTime) < 5*time.Second {
-		h := util.SHA256String(text)
-		if h == s.selfWriteHash {
-			log.Printf("[filostack] skip self-write push (hash=%s)", h)
-			return
-		}
+	if !s.selfTracker.IsExpired() && s.selfTracker.IsSelfWrite(text) {
+		log.Printf("[filostack] skip self-write push (hash=%s)", s.selfTracker.Hash())
+		return
 	}
 	s.items.PushBack(text)
 	log.Printf("[filostack] push: size=%d, mode=%s, text=%q", s.items.Len(), s.mode, util.TruncateBytes(text, 40))
@@ -141,7 +137,7 @@ func (s *Service) Pop() (string, bool) {
 func (s *Service) Clear() {
 	s.mu.Lock()
 	s.items.Init()
-	s.selfWriteHash = ""
+	s.selfTracker.Clear()
 	s.mu.Unlock()
 	log.Println("[filostack] cleared")
 }
@@ -210,10 +206,10 @@ func (s *Service) updateStrategy() {
 // MarkSelfWrite records jPaste's own clipboard write.
 func (s *Service) MarkSelfWrite(text string) {
 	s.mu.Lock()
-	s.selfWriteHash = util.SHA256String(text)
-	s.selfWriteTime = time.Now()
+	s.selfTracker.Mark(text)
+	hash := s.selfTracker.Hash()
 	s.mu.Unlock()
-	log.Printf("[filostack] MarkSelfWrite: hash=%s", s.selfWriteHash)
+	log.Printf("[filostack] MarkSelfWrite: hash=%s", hash)
 }
 
 // SetSelfPaste marks that jPaste is about to simulate a Ctrl+V (keybd_event).

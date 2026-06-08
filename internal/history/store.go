@@ -1,8 +1,8 @@
 package history
 
 import (
+	"jpaste/internal/db"
 	"jpaste/internal/model"
-	"jpaste/internal/repository"
 )
 
 // EntryStore abstracts the persistence layer for clipboard entries.
@@ -26,15 +26,15 @@ type EntryStore interface {
 }
 
 // EntryRow is a single row from the clipboard_entry table.
-type EntryRow = repository.EntryRow
+type EntryRow = db.EntryRow
 
-// repoAdapter adapts *repository.Repository to EntryStore.
+// repoAdapter adapts *db.Repository to EntryStore.
 type repoAdapter struct {
-	repo *repository.Repository
+	repo *db.Repository
 }
 
-// NewSQLiteStore creates an EntryStore backed by *repository.Repository.
-func NewSQLiteStore(repo *repository.Repository) EntryStore {
+// NewSQLiteStore creates an EntryStore backed by *db.Repository.
+func NewSQLiteStore(repo *db.Repository) EntryStore {
 	return &repoAdapter{repo: repo}
 }
 

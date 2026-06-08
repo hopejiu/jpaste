@@ -1,4 +1,4 @@
-import { Service as JsonViewerService } from '../../bindings/jpaste/internal/jsonviewer'
+import { JSONViewerService as JsonViewerService } from '../../bindings/jpaste/internal/viewers'
 
 function openJsonViewer(_content, entryId) {
   JsonViewerService.OpenJsonViewer(entryId)

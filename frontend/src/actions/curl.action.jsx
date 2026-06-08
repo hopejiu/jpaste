@@ -1,4 +1,4 @@
-import { Service as CurlViewerService } from '../../bindings/jpaste/internal/curlviewer'
+import { CurlViewerService } from '../../bindings/jpaste/internal/viewers'
 
 // Detection: only cheap regex. Full parsing happens in the viewer page via curlconverter.
 function openCurlViewer(_content, entryId) {

@@ -11,10 +11,18 @@ import (
 	"golang.design/x/hotkey"
 )
 
-var hk *hotkey.Hotkey
+// Service manages system-level global hotkeys.
+type Service struct {
+	hk *hotkey.Hotkey
+}
+
+// NewService creates a new hotkey service.
+func NewService() *Service {
+	return &Service{}
+}
 
 // Register registers a system-level global hotkey. format: "Alt+V", "Ctrl+Shift+A".
-func Register(keystr string, callback func()) error {
+func (s *Service) Register(keystr string, callback func()) error {
 	mods, key, err := parse(keystr)
 	if err != nil {
 		log.Printf("[hotkey] parse %q failed: %v", keystr, err)
@@ -22,15 +30,15 @@ func Register(keystr string, callback func()) error {
 	}
 
 	log.Printf("[hotkey] Registering %q (mods=%v key=%v)", keystr, mods, key)
-	hk = hotkey.New(mods, key)
-	if err := hk.Register(); err != nil {
+	s.hk = hotkey.New(mods, key)
+	if err := s.hk.Register(); err != nil {
 		log.Printf("[hotkey] Register %q failed: %v", keystr, err)
 		return err
 	}
 
 	log.Printf("[hotkey] %q registered successfully", keystr)
 	go func() {
-		for range hk.Keydown() {
+		for range s.hk.Keydown() {
 			log.Println("[hotkey] Keydown triggered, calling callback")
 			callback()
 		}
@@ -40,18 +48,18 @@ func Register(keystr string, callback func()) error {
 }
 
 // UnregisterAll unregisters the hotkey.
-func UnregisterAll() {
+func (s *Service) UnregisterAll() {
 	log.Println("[hotkey] UnregisterAll called")
-	if hk != nil {
-		hk.Unregister()
-		hk = nil
+	if s.hk != nil {
+		s.hk.Unregister()
+		s.hk = nil
 	}
 }
 
 // RegisterAndSwap tries to register a new hotkey without touching the current
 // hk until registration succeeds. On success the old hotkey is unregistered and
 // replaced. On failure the old hotkey remains active and the error is returned.
-func RegisterAndSwap(keystr string, callback func()) error {
+func (s *Service) RegisterAndSwap(keystr string, callback func()) error {
 	mods, key, err := parse(keystr)
 	if err != nil {
 		log.Printf("[hotkey] RegisterAndSwap parse %q failed: %v", keystr, err)
@@ -70,13 +78,13 @@ func RegisterAndSwap(keystr string, callback func()) error {
 	}
 
 	// Success — swap.
-	if hk != nil {
-		hk.Unregister()
+	if s.hk != nil {
+		s.hk.Unregister()
 	}
-	hk = nhk
+	s.hk = nhk
 
 	go func() {
-		for range hk.Keydown() {
+		for range s.hk.Keydown() {
 			log.Println("[hotkey] Keydown triggered, calling callback")
 			callback()
 		}
@@ -107,9 +115,9 @@ func parse(s string) ([]hotkey.Modifier, hotkey.Key, error) {
 		}
 	}
 
-		if key == 0 {
-			return nil, 0, errors.New("hotkey: invalid key")
-		}
+	if key == 0 {
+		return nil, 0, errors.New("hotkey: invalid key")
+	}
 	return mods, key, nil
 }
 

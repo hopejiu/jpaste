@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"sync"
-	"time"
 
 	"jpaste/internal/model"
 	"jpaste/internal/util"
@@ -16,41 +15,22 @@ import (
 // Self-write tracking
 // ---------------------------------------------------------------------------
 
-var (
-	selfWriteMu    sync.Mutex
-	selfWriteHash  string
-	selfWriteTime  time.Time
-)
+var selfWriteTracker util.SelfWriteTracker
 
 // MarkSelfWrite records that jPaste wrote text to the clipboard, so subsequent
 // WM_CLIPBOARDUPDATE callbacks can distinguish our own writes from user copies.
 func MarkSelfWrite(text string) {
-	selfWriteMu.Lock()
-	selfWriteHash = util.SHA256String(text)
-	selfWriteTime = time.Now()
-	selfWriteMu.Unlock()
-	log.Printf("[clipboard] MarkSelfWrite: hash=%s text=%q", selfWriteHash[:12], util.Truncate(text, 40))
+	selfWriteTracker.Mark(text)
+	log.Printf("[clipboard] MarkSelfWrite: hash=%s text=%q", selfWriteTracker.Hash()[:12], util.Truncate(text, 40))
 }
 
 // IsSelfWrite reports whether the captured data matches the last text
 // written by jPaste itself. Used to avoid pushing self-writes onto the stack.
 func IsSelfWrite(data model.CapturedData) bool {
-	selfWriteMu.Lock()
-	defer selfWriteMu.Unlock()
-	if selfWriteHash == "" {
-		log.Printf("[clipboard] IsSelfWrite: no self-write marker set")
-		return false
-	}
-	age := time.Since(selfWriteTime).Milliseconds()
-	if age > 5000 {
-		log.Printf("[clipboard] IsSelfWrite: marker expired (%dms ago)", age)
-		return false
-	}
 	for _, f := range data.Formats {
 		if model.IsTextFormat(f.FormatType) {
-			hx := util.SHA256String(f.Text)
-			match := hx == selfWriteHash
-			log.Printf("[clipboard] IsSelfWrite: captured=%s last=%s age=%dms match=%v", hx, selfWriteHash, age, match)
+			match := selfWriteTracker.IsSelfWrite(f.Text)
+			log.Printf("[clipboard] IsSelfWrite: match=%v age=%dms", match, 0)
 			return match
 		}
 	}
@@ -60,9 +40,7 @@ func IsSelfWrite(data model.CapturedData) bool {
 
 // ClearSelfWrite clears the self-write marker.
 func ClearSelfWrite() {
-	selfWriteMu.Lock()
-	selfWriteHash = ""
-	selfWriteMu.Unlock()
+	selfWriteTracker.Clear()
 }
 
 // OnCapture is called when new clipboard content is detected.

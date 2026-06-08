@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Window } from '@wailsio/runtime'
 import { ArrowLeft, Send, Plug, PlugZap, Copy, ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 
+import { useEscapeHide } from '../hooks/useEscapeHide'
+import { Window, Events } from '@wailsio/runtime'
+import { EVENTS } from '../events'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
-
 import { log } from '../logger'
 
 const WS_SCHEMES = ['ws', 'wss']
@@ -36,6 +37,7 @@ function formatTime(d) {
 }
 
 export default function WsViewPage() {
+  useEscapeHide()
   const [searchParams] = useSearchParams()
   const entryId = parseInt(searchParams.get('id'), 10)
 
@@ -179,16 +181,17 @@ export default function WsViewPage() {
     }
   }, [])
 
+  // Disconnect WebSocket when the window is hidden (Escape, back button, focus loss).
   useEffect(() => {
-    const handler = (e) => {
-      if (e.key !== 'Escape') return
-      const tag = document.activeElement?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return
-      e.preventDefault()
-      Window.Hide()
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
+    const unsub = Events.On(EVENTS.WINDOW_HIDING, () => {
+      if (wsRef.current) {
+        wsRef.current.close(1001, 'window hidden')
+        wsRef.current = null
+        setConnected(false)
+        setConnecting(false)
+      }
+    })
+    return () => unsub()
   }, [])
 
   const handleCopyMessage = useCallback((text) => {
@@ -229,7 +232,7 @@ export default function WsViewPage() {
       <div className="flex items-center px-4 py-3 gap-3 border-b border-border flex-shrink-0 bg-surface">
         <button
           className="w-9 h-9 flex items-center justify-center border-none bg-transparent text-foreground cursor-pointer rounded-md transition-[background] duration-fast hover:bg-surface-hover"
-          onClick={() => Window.Hide()}
+          onClick={() => Window.Close()}
           title="关闭"
         >
           <ArrowLeft size={20} />

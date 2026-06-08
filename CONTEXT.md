@@ -138,7 +138,11 @@ A `.txt` file created in `%TEMP%` with the selected entry's content, then opened
 | **Event-Driven** | `internal/toast/`, `internal/events/` | Go emits Wails custom events (`toast-notification`, `clipboard-updated`); front-end listens via `Events.On()`. |
 | **Observer** | `internal/settings/` | `OnHotkeyChange` / `OnSettingsChange` callbacks notify dependents when settings mutate. |
 | **Template Method** | `internal/history/service.go` | `resolveSortParams` — shared helper extracted from duplicate sort-field resolution in `GetHistory` and `GetHistoryRegex`. |
-| **Utility Module** | `internal/util/` | Consolidates SHA256 hashing (`SHA256Hex`, `SHA256String`, `SHA256TextOrRaw`), text truncation (`Truncate`, `TruncateBytes`), and DIB/BMP header prepending (`PrependBMPHeader`), eliminating cross-package code duplication. |
+| **Utility Module** | `internal/util/` | Consolidates SHA256 hashing (`SHA256Hex`, `SHA256String`, `SHA256TextOrRaw`), text truncation (`Truncate`, `TruncateBytes`), DIB/BMP header prepending (`PrependBMPHeader`), self-write tracking (`SelfWriteTracker`), and int64 formatting (`FormatInt`), eliminating cross-package code duplication. |
+| **Shared Types** | `internal/viewers/` | `CreateWindowFunc` — shared type used by all four viewer service packages (curlviewer, jsonviewer, wssviewer, imageviewer), eliminating four identical type declarations. |
+| **Modal Component** | `frontend/src/components/Modal.jsx` | Universal modal overlay with ESC close, overlay click close, size variants. Replaces 4 duplicate manual overlay implementations. |
+| **Decode Modal** | `frontend/src/components/TransformModal.jsx` | Reusable decode-component (input → decode → output + copy). Eliminates 3 near-identical action modal implementations. |
+| **Escape Hook** | `frontend/src/hooks/useEscapeHide.js` | Shared Escape key handler for hiding the window. Replaces 3 duplicate handlers in viewer pages. |
 
 ## Source File Layout
 

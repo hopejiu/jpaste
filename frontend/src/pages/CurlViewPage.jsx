@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Window } from '@wailsio/runtime'
 import { ArrowLeft, Send, Clipboard, Maximize2, Minimize2, Code, ChevronDown, ChevronRight } from 'lucide-react'
 
+import { useEscapeHide } from '../hooks/useEscapeHide'
+import { useJsonEditor } from '../hooks/useJsonEditor'
+import { Window } from '@wailsio/runtime'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
-import { Service as CurlViewerService } from '../../bindings/jpaste/internal/curlviewer'
-
+import { CurlViewerService } from '../../bindings/jpaste/internal/viewers'
 import { log } from '../logger'
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
@@ -75,6 +76,7 @@ function statusBadgeClass(code) {
 }
 
 export default function CurlViewPage() {
+  useEscapeHide()
   const [searchParams] = useSearchParams()
   const entryId = parseInt(searchParams.get('id'), 10)
 
@@ -94,8 +96,7 @@ export default function CurlViewPage() {
   const [response, setResponse] = useState(null)
 
   const [jsonMode, setJsonMode] = useState(false)
-  const jsonContainerRef = useRef(null)
-  const jsonEditorRef = useRef(null)
+  const { containerRef: jsonContainerRef, updateJson, destroyEditor } = useJsonEditor()
 
   const [respCollapsed, setRespCollapsed] = useState(false)
   const fetchedRef = useRef(false)
@@ -156,7 +157,7 @@ export default function CurlViewPage() {
     const hdrMap = parsed.headers || {}
     const hdrList = Object.keys(hdrMap).map(k => ({ key: k, value: hdrMap[k] }))
     setHeaders(hdrList.length > 0 ? hdrList : [{ key: '', value: '' }])
-    setBody(parsed.data || '')
+    setBody(typeof parsed.data === 'object' ? JSON.stringify(parsed.data, null, 2) : (parsed.data || ''))
     setFollowRedirects(false)
   }
 
@@ -250,59 +251,23 @@ export default function CurlViewPage() {
     navigator.clipboard.writeText(convertedCode).catch(e => log.error('CurlViewPage', 'copy converted failed:', e))
   }, [convertedCode])
 
+  // Destroy JSON editor when response panel is collapsed.
   useEffect(() => {
-    if (!jsonMode || !response || !jsonContainerRef.current) return
-    if (jsonEditorRef.current) {
-      try {
-        const data = JSON.parse(response.body)
-        jsonEditorRef.current.update(data)
-      } catch { /* ignore */ }
-      return
+    if (respCollapsed && jsonMode) {
+      destroyEditor()
     }
-
-    let cancelled = false
-    Promise.all([
-      import('jsoneditor'),
-      import('jsoneditor/dist/jsoneditor.css'),
-    ]).then(([{ default: JSONEditor }]) => {
-      if (cancelled) return
-      try {
-        const data = JSON.parse(response.body)
-        const editor = new JSONEditor(jsonContainerRef.current, {
-          mode: 'tree',
-          modes: ['tree', 'code'],
-          mainMenuBar: true,
-          navigationBar: true,
-          statusBar: true,
-          search: true,
-          history: true,
-          indentation: 2,
-        }, data)
-        jsonEditorRef.current = editor
-      } catch { /* JSON parse failed */ }
-    })
-    return () => { cancelled = true }
-  }, [jsonMode, response])
+  }, [respCollapsed, jsonMode, destroyEditor])
 
   useEffect(() => {
-    return () => {
-      if (jsonEditorRef.current) {
-        jsonEditorRef.current.destroy()
-        jsonEditorRef.current = null
-      }
-    }
-  }, [])
+    if (!jsonMode || !response || respCollapsed) return
+    try {
+      const data = JSON.parse(response.body)
+      updateJson(data, 'tree')
+    } catch { /* not JSON */ }
+  }, [jsonMode, response, respCollapsed])
 
   useEffect(() => {
-    const handler = (e) => {
-      if (e.key !== 'Escape') return
-      const tag = document.activeElement?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return
-      e.preventDefault()
-      Window.Hide()
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
+    return () => destroyEditor()
   }, [])
 
   const isBodyJson = (() => {
@@ -327,13 +292,10 @@ export default function CurlViewPage() {
 
   const handleToggleJson = useCallback(() => {
     if (jsonMode) {
-      if (jsonEditorRef.current) {
-        jsonEditorRef.current.destroy()
-        jsonEditorRef.current = null
-      }
+      destroyEditor()
     }
     setJsonMode(v => !v)
-  }, [jsonMode])
+  }, [jsonMode, destroyEditor])
 
   if (loading) {
     return (
@@ -360,7 +322,7 @@ export default function CurlViewPage() {
       <div className="flex items-center px-4 py-3 gap-3 border-b border-border flex-shrink-0 bg-surface">
         <button
           className="w-9 h-9 flex items-center justify-center border-none bg-transparent text-foreground cursor-pointer rounded-md transition-[background] duration-fast hover:bg-surface-hover"
-          onClick={() => Window.Hide()}
+          onClick={() => Window.Close()}
           title="关闭"
         >
           <ArrowLeft size={20} />
@@ -520,23 +482,6 @@ export default function CurlViewPage() {
             )}
             <div className="ml-auto flex items-center gap-1">
               <button
-                onClick={handleCopyResponse}
-                className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-border cursor-pointer transition-all duration-fast bg-surface text-muted hover:bg-surface-hover"
-                title="复制响应体"
-              >
-                <Clipboard size={11} />
-                复制
-              </button>
-              {isBodyJson && (
-                <button
-                  onClick={handleToggleJson}
-                  className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-border cursor-pointer transition-all duration-fast text-primary hover:bg-primary-alpha-06"
-                >
-                  <Code size={11} />
-                  {jsonMode ? '原始' : 'JSON'}
-                </button>
-              )}
-              <button
                 onClick={() => setRespCollapsed(v => !v)}
                 className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-muted cursor-pointer rounded transition-all duration-fast hover:bg-surface-hover"
                 title={respCollapsed ? '展开' : '折叠'}
@@ -567,6 +512,27 @@ export default function CurlViewPage() {
               <CollapsibleSection
                 title="响应体"
                 desc={response.body ? `${response.body.length} bytes` : '空'}
+                extra={
+                  <>
+                    <button
+                      onClick={handleCopyResponse}
+                      className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-border cursor-pointer transition-all duration-fast bg-surface text-muted hover:bg-surface-hover"
+                      title="复制响应体"
+                    >
+                      <Clipboard size={11} />
+                      复制
+                    </button>
+                    {isBodyJson && (
+                      <button
+                        onClick={handleToggleJson}
+                        className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-border cursor-pointer transition-all duration-fast text-primary hover:bg-primary-alpha-06"
+                      >
+                        <Code size={11} />
+                        {jsonMode ? '原始' : 'JSON'}
+                      </button>
+                    )}
+                  </>
+                }
               >
                 {jsonMode ? (
                   <div ref={jsonContainerRef} className="w-full" style={{ minHeight: '200px' }} />
@@ -609,7 +575,7 @@ function CollapsibleSection({ title, desc, defaultOpen = true, extra, children }
     <div>
       <div className="flex items-center gap-1.5 mb-1.5">
         <div
-          className="flex items-center gap-1.5 cursor-pointer select-none text-foreground hover:text-primary transition-colors duration-fast min-w-0"
+          className="flex items-center gap-1.5 cursor-pointer select-none text-foreground hover:text-primary transition-colors duration-fast min-w-0 flex-1"
           onClick={() => setOpen(!open)}
         >
           {open ? <ChevronDown size={14} className="flex-shrink-0 text-muted" /> : <ChevronRight size={14} className="flex-shrink-0 text-muted" />}
@@ -618,7 +584,7 @@ function CollapsibleSection({ title, desc, defaultOpen = true, extra, children }
         </div>
         {extra}
       </div>
-      {open && children}
+      <div style={{ display: open ? '' : 'none' }}>{children}</div>
     </div>
   )
 }

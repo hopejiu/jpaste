@@ -8,6 +8,7 @@ import { log } from '../logger'
 import { getAll } from '../actions'
 import { formatBytes } from '../utils/format'
 import ToggleSwitch from '../components/ToggleSwitch'
+import Modal from '../components/Modal'
 
 const MODS = ['Ctrl', 'Alt', 'Shift', 'Win']
 
@@ -508,55 +509,34 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Clear All Confirmation Modal — glass effect */}
-      {showClearModal && (
-        <div
-          className="fixed inset-0 z-[3000] flex items-center justify-center animate-[fadeIn_150ms_ease-out]"
-          style={{ background: 'rgba(0,0,0,0.4)' }}
-          onClick={() => setShowClearModal(false)}
-        >
-          <div className="bg-elevated border border-border rounded-lg shadow-glass-lg p-6 w-[340px] max-w-[90vw]" onClick={e => e.stopPropagation()}>
-            <h3 className="m-0 text-lg font-semibold text-foreground mb-2">清空剪贴板历史</h3>
-            <p className="m-0 mb-5 text-sm text-muted leading-[1.5]">
-              共有 <strong>{stats.count.toLocaleString()}</strong> 条记录。选择清空方式：
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => doClearAll(false)}
-                className="px-4 py-2.5 rounded-md border border-border cursor-pointer text-sm font-inherit text-left transition-all duration-fast"
-                style={{
-                  background: hoveredClearBtn === 'all' ? 'var(--color-surface-hover)' : 'var(--color-surface)',
-                  color: 'var(--color-foreground)',
-                }}
-                onMouseEnter={() => setHoveredClearBtn('all')}
-                onMouseLeave={() => setHoveredClearBtn(null)}
-              >
-                <div className="font-semibold">全部删除</div>
-                <div className="text-xs text-muted mt-0.5">删除所有记录（包括收藏），不可撤销</div>
-              </button>
-              <button
-                onClick={() => doClearAll(true)}
-                className="px-4 py-2.5 rounded-md border border-border cursor-pointer text-sm font-inherit text-left transition-all duration-fast"
-                style={{
-                  background: hoveredClearBtn === 'fav' ? 'var(--color-surface-hover)' : 'var(--color-surface)',
-                  color: 'var(--color-foreground)',
-                }}
-                onMouseEnter={() => setHoveredClearBtn('fav')}
-                onMouseLeave={() => setHoveredClearBtn(null)}
-              >
-                <div className="font-semibold">保留收藏</div>
-                <div className="text-xs text-muted mt-0.5">只删除未收藏的记录，收藏内容保留</div>
-              </button>
-              <button
-                onClick={() => setShowClearModal(false)}
-                className="py-2 rounded-md border-none bg-transparent text-muted cursor-pointer text-sm font-inherit mt-1"
-              >
-                取消
-              </button>
-            </div>
-          </div>
+      {/* Clear All Confirmation Modal */}
+      <Modal open={showClearModal} onClose={() => setShowClearModal(false)} title="清空剪贴板历史" size="sm">
+        <p className="m-0 mb-5 text-sm text-muted leading-[1.5]">
+          共有 <strong>{stats.count.toLocaleString()}</strong> 条记录。选择清空方式：
+        </p>
+        <div className="flex flex-col gap-2">
+          <button onClick={() => doClearAll(false)}
+            className="px-4 py-2.5 rounded-md border border-border cursor-pointer text-sm font-inherit text-left transition-all duration-fast"
+            style={{ background: hoveredClearBtn === 'all' ? 'var(--color-surface-hover)' : 'var(--color-surface)', color: 'var(--color-foreground)' }}
+            onMouseEnter={() => setHoveredClearBtn('all')}
+            onMouseLeave={() => setHoveredClearBtn(null)}
+          >
+            <div className="font-semibold">全部删除</div>
+            <div className="text-xs text-muted mt-0.5">删除所有记录（包括收藏），不可撤销</div>
+          </button>
+          <button onClick={() => doClearAll(true)}
+            className="px-4 py-2.5 rounded-md border border-border cursor-pointer text-sm font-inherit text-left transition-all duration-fast"
+            style={{ background: hoveredClearBtn === 'fav' ? 'var(--color-surface-hover)' : 'var(--color-surface)', color: 'var(--color-foreground)' }}
+            onMouseEnter={() => setHoveredClearBtn('fav')}
+            onMouseLeave={() => setHoveredClearBtn(null)}
+          >
+            <div className="font-semibold">保留收藏</div>
+            <div className="text-xs text-muted mt-0.5">只删除未收藏的记录，收藏内容保留</div>
+          </button>
+          <button onClick={() => setShowClearModal(false)}
+            className="py-2 rounded-md border-none bg-transparent text-muted cursor-pointer text-sm font-inherit mt-1">取消</button>
         </div>
-      )}
+      </Modal>
     </div>
   )
 }

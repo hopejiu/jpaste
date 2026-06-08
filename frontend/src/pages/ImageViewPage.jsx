@@ -100,7 +100,7 @@ export default function ImageViewPage() {
 
   useEffect(() => {
     const handler = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); Window.Hide(); return }
+      if (e.key === 'Escape') { e.preventDefault(); Window.Close(); return }
       if (e.key === 'ArrowLeft') { e.preventDefault(); navigateImg(-1); return }
       if (e.key === 'ArrowRight') { e.preventDefault(); navigateImg(1); return }
       if (e.key === '0' || e.key === 'Home') { e.preventDefault(); resetZoom(); return }
