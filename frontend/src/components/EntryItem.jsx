@@ -47,14 +47,10 @@ export default function EntryItem({
         transition-[background] duration-fast relative
         border-b border-border
         ${isFocused ? 'bg-surface-hover' : ''}
-        ${imgOnly ? 'cursor-pointer' : ''}
       `}
       onMouseEnter={() => { onFocus(idx); setIsHovered(true) }}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={() => {
-        if (imgOnly) { onImageClick(entry); return }
-        onSelect(entry)
-      }}
+      onClick={() => onSelect(entry)}
     >
       {shortcut && (
         <div
@@ -72,7 +68,8 @@ export default function EntryItem({
         {imgOnly ? (
           thumb?.url ? (
             <div
-              className="relative inline-block max-w-full"
+              className="relative inline-block max-w-full cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); onImageClick(entry) }}
               onMouseEnter={(e) => {
                 const overlay = e.currentTarget.querySelector('[data-overlay]')
                 if (overlay) overlay.style.opacity = '1'
