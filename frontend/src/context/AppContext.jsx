@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { Events } from '@wailsio/runtime'
 import { Service as SettingsService } from '../../bindings/jpaste/internal/settings'
-import { Service as SyncService } from '../../bindings/jpaste/internal/sync'
 import { EVENTS } from '../events'
 import { log } from '../logger'
 import { defaultConfig } from '../actions'
@@ -18,15 +17,12 @@ const DEFAULT_SETTINGS = {
   paste_order: 'normal',
   action_config: {},
   theme: 'a',
+  auto_clear_search: false,
+  auto_clear_seconds: 30,
 }
-
-const DEFAULT_SYNC_STATUS = { status: 'none', error: '' }
-const DEFAULT_WD_CONFIG = { url: '', username: '', password: '', enabled: false }
 
 export function AppProvider({ children }) {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS)
-  const [syncStatus, setSyncStatus] = useState(DEFAULT_SYNC_STATUS)
-  const [wdConfig, setWdConfig] = useState(DEFAULT_WD_CONFIG)
 
   // Load settings.
   useEffect(() => {
@@ -38,43 +34,9 @@ export function AppProvider({ children }) {
       .catch(e => log.error('AppContext', e))
   }, [])
 
-  // Load WebDAV config.
-  useEffect(() => {
-    SyncService.GetConfig()
-      .then(c => {
-        if (c && (c.url || c.username)) {
-          setWdConfig({ url: c.url || '', username: c.username || '', password: c.password || '', enabled: c.enabled || false })
-        }
-      })
-      .catch(e => log.error('AppContext', 'GetConfig error:', e))
-  }, [])
-
-  const refreshWdConfig = useCallback(async () => {
-    try {
-      const c = await SyncService.GetConfig()
-      if (c) {
-        setWdConfig({ url: c.url || '', username: c.username || '', password: c.password || '', enabled: c.enabled || false })
-      }
-    } catch (e) {
-      log.error('AppContext', 'refresh config error:', e)
-    }
-  }, [])
-
-  // Listen for sync status events.
-  useEffect(() => {
-    const unsub = Events.On(EVENTS.SYNC_STATUS, (evt) => {
-      setSyncStatus(evt.data || DEFAULT_SYNC_STATUS)
-    })
-    return unsub
-  }, [])
-
   const saveSettings = useCallback(async (newSettings) => {
-    try {
-      await SettingsService.SaveSettings(newSettings)
-      setSettings(newSettings)
-    } catch (err) {
-      log.error('AppContext', 'Failed to save settings:', err)
-    }
+    await SettingsService.SaveSettings(newSettings)
+    setSettings(newSettings)
   }, [])
 
   // Set paste order — wraps saveSettings.
@@ -93,8 +55,6 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       settings, saveSettings,
-      syncStatus,
-      wdConfig, refreshWdConfig,
       setPasteOrder,
     }}>
       {children}

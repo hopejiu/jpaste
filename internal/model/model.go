@@ -65,12 +65,6 @@ type CapturedData struct {
 	PrimaryHash string // SHA-256 of CF_UNICODETEXT, or image bytes if text is absent
 }
 
-// SyncFormat is a text format payload for sync push.
-type SyncFormat struct {
-	FormatType uint32 `json:"t"`
-	Content    string `json:"c"`
-}
-
 // ---------------------------------------------------------------------------
 // Tag / format helper functions
 // ---------------------------------------------------------------------------
@@ -143,4 +137,56 @@ func isWindowsPath(s string) bool {
 		return true
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// Primary text extraction (shared logic)
+// ---------------------------------------------------------------------------
+
+// PrimaryText returns the main text content from captured formats.
+// Priority: CF_UNICODETEXT > CF_HDROP > any format with text.
+func PrimaryText(formats []CapturedFormat) string {
+	for _, f := range formats {
+		if f.FormatType == CF_UNICODETEXT {
+			return f.Text
+		}
+	}
+	for _, f := range formats {
+		if f.FormatType == CF_HDROP && f.Text != "" {
+			return f.Text
+		}
+	}
+	for _, f := range formats {
+		if f.Text != "" {
+			return f.Text
+		}
+	}
+	return ""
+}
+
+// PrimaryTextFromEntries returns the main text content from format entries.
+// Priority: CF_UNICODETEXT > CF_HDROP > any format with content.
+func PrimaryTextFromEntries(formats []FormatEntry) string {
+	for _, f := range formats {
+		if f.FormatType == CF_UNICODETEXT {
+			return f.Content
+		}
+	}
+	for _, f := range formats {
+		if f.FormatType == CF_HDROP && f.Content != "" {
+			return f.Content
+		}
+	}
+	for _, f := range formats {
+		if f.Content != "" && !strings.HasPrefix(f.Content, "[image ") {
+			return f.Content
+		}
+	}
+	return ""
+}
+
+// TextLength returns the length of the primary text content.
+func TextLength(formats []CapturedFormat) int {
+	text := PrimaryText(formats)
+	return len(text)
 }

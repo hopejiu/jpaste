@@ -1,20 +1,24 @@
 import { useState, useMemo } from 'react'
 import { formBody, label as lbl, textarea, output, errorMsg, resultText, copyBtn, copyBtnSuccess } from './actionStyles'
 
-function decodeB64(input) {
+function decodeURL(input) {
   if (!input.trim()) return { decoded: '', error: null }
   try {
-    const decoded = atob(input.trim())
+    const decoded = decodeURIComponent(input.trim())
     return { decoded, error: null }
   } catch (e) {
-    return { decoded: '', error: '无效的 Base64 编码' }
+    return { decoded: '', error: '无效的 URL 编码' }
   }
 }
 
-function Base64Modal({ content, onClose }) {
+function hasPercentEncoding(s) {
+  return /%[0-9A-Fa-f]{2}/.test(s)
+}
+
+function URLDecodeModal({ content, onClose }) {
   const [input, setInput] = useState(content.trim())
   const [copied, setCopied] = useState(false)
-  const { decoded, error } = useMemo(() => decodeB64(input), [input])
+  const { decoded, error } = useMemo(() => decodeURL(input), [input])
 
   const handleCopy = async () => {
     if (!decoded || error) return
@@ -29,7 +33,7 @@ function Base64Modal({ content, onClose }) {
 
   return (
     <div style={formBody}>
-      <div style={lbl}>Base64 原文</div>
+      <div style={lbl}>URL 编码原文</div>
       <textarea
         style={textarea}
         value={input}
@@ -62,13 +66,14 @@ function Base64Modal({ content, onClose }) {
 }
 
 export default {
-  id: 'base64',
-  label: 'Base64 解码',
-  icon: 'Binary',
-  priority: 30,
+  id: 'url_decode',
+  label: 'URL 解码',
+  icon: 'Url',
+  priority: 35,
   detect(content) {
     const s = content.trim()
-    return /^[A-Za-z0-9+/]+=*$/.test(s) && s.length >= 4 && s.length % 4 === 0
+    if (!s || s.length > 5000) return false
+    return hasPercentEncoding(s)
   },
-  Component: Base64Modal,
+  Component: URLDecodeModal,
 }

@@ -4,6 +4,7 @@ package hotkey
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 
@@ -45,6 +46,44 @@ func UnregisterAll() {
 		hk.Unregister()
 		hk = nil
 	}
+}
+
+// RegisterAndSwap tries to register a new hotkey without touching the current
+// hk until registration succeeds. On success the old hotkey is unregistered and
+// replaced. On failure the old hotkey remains active and the error is returned.
+func RegisterAndSwap(keystr string, callback func()) error {
+	mods, key, err := parse(keystr)
+	if err != nil {
+		log.Printf("[hotkey] RegisterAndSwap parse %q failed: %v", keystr, err)
+		return fmt.Errorf("快捷键格式无效")
+	}
+
+	log.Printf("[hotkey] RegisterAndSwap trying %q (mods=%v key=%v)", keystr, mods, key)
+	nhk := hotkey.New(mods, key)
+	if err := nhk.Register(); err != nil {
+		log.Printf("[hotkey] RegisterAndSwap %q failed: %v", keystr, err)
+		msg := err.Error()
+		if strings.Contains(msg, "already registered") {
+			return fmt.Errorf("热键 %s 已被其他程序占用", keystr)
+		}
+		return fmt.Errorf("热键 %s 注册失败：%s", keystr, msg)
+	}
+
+	// Success — swap.
+	if hk != nil {
+		hk.Unregister()
+	}
+	hk = nhk
+
+	go func() {
+		for range hk.Keydown() {
+			log.Println("[hotkey] Keydown triggered, calling callback")
+			callback()
+		}
+	}()
+
+	log.Printf("[hotkey] RegisterAndSwap %q succeeded", keystr)
+	return nil
 }
 
 func parse(s string) ([]hotkey.Modifier, hotkey.Key, error) {

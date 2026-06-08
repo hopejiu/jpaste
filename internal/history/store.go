@@ -1,396 +1,103 @@
 package history
 
 import (
-	"database/sql"
-	"fmt"
-	"log"
-
 	"jpaste/internal/model"
+	"jpaste/internal/repository"
 )
 
 // EntryStore abstracts the persistence layer for clipboard entries.
-// The production adapter is sqliteStore; tests use an in-memory fake.
+// The production adapter is repoAdapter backed by repository.Repository.
 type EntryStore interface {
-	// QueryHistory returns a page of entry rows sorted by the given field and order.
-	// Returns pageSize+1 rows to enable hasMore detection.
 	QueryHistory(search string, tagMask int, afterCursor1 string, afterID int64, limit int, sortField string, sortOrder string) ([]EntryRow, error)
-
-	// LoadFormats returns all formats for the given entry IDs, keyed by entry ID.
 	LoadFormats(ids []int64) (map[int64][]model.FormatEntry, error)
-
-	// UpsertDedup tries to dedup an existing entry by hash. Returns true if deduped.
 	UpsertDedup(hash, sourceEXE, sourceTitle string, tagMask int, now string, contentLength int) (deduped bool, err error)
-
-	// InsertEntry inserts a new entry, returning the auto-generated ID.
 	InsertEntry(hash, sourceEXE, sourceTitle string, tagMask int, now string, contentLength int) (id int64, err error)
-
-	// InsertFormat inserts a format row for an entry.
 	InsertFormat(entryID int64, formatType uint32, content, filePath, formatHash string) error
-
-	// QueryFormatContent returns the text content for a specific format of an entry.
 	QueryFormatContent(entryID int64, formatType uint32) (string, error)
-
-	// QueryImageFilePath returns the first image file path for an entry.
 	QueryImageFilePath(entryID int64) (string, error)
-
-	// UpdateTimestamp refreshes the updated_at of an entry.
 	UpdateTimestamp(id int64, now string) error
-
-	// DeleteEntry removes an entry, returning associated image file paths.
 	DeleteEntry(id int64) (imagePaths []string, err error)
-
-	// ToggleFavorite sets the is_favorite flag on an entry.
 	ToggleFavorite(id int64, value bool) error
-
-	// GetStats returns aggregate clipboard statistics.
 	GetStats() (Stats, error)
-
-	// Cleanup removes expired entries, returning count and associated image paths.
 	Cleanup(retainDays int) (deleted int64, imagePaths []string, err error)
-
-	// ClearAll removes all entries (or non-favorites if keepFavorites is true), returning associated image paths.
 	ClearAll(keepFavorites bool) (imagePaths []string, err error)
-
-	// HasFileFormatByHash checks if an entry (by content_hash) has CF_HDROP formats.
 	HasFileFormatByHash(hash string) (bool, error)
-
-	// QueryImageEntryIDs returns all entry IDs that have image formats, filtered by tag/search.
 	QueryImageEntryIDs(tagMask int, search string) ([]int64, error)
 }
 
 // EntryRow is a single row from the clipboard_entry table.
-type EntryRow struct {
-	ID            int64
-	ContentHash   string
-	SourceEXE     string
-	SourceTitle   string
-	IsFavorite    bool
-	CreatedAt     string
-	UpdatedAt     string
-	ContentLength int
+type EntryRow = repository.EntryRow
+
+// repoAdapter adapts *repository.Repository to EntryStore.
+type repoAdapter struct {
+	repo *repository.Repository
 }
 
-// sqliteStore implements EntryStore backed by SQLite.
-type sqliteStore struct {
-	db *sql.DB
+// NewSQLiteStore creates an EntryStore backed by *repository.Repository.
+func NewSQLiteStore(repo *repository.Repository) EntryStore {
+	return &repoAdapter{repo: repo}
 }
 
-// NewSQLiteStore creates an EntryStore backed by the given SQLite connection.
-func NewSQLiteStore(db *sql.DB) EntryStore {
-	return &sqliteStore{db: db}
+func (a *repoAdapter) QueryHistory(search string, tagMask int, afterCursor1 string, afterID int64, limit int, sortField, sortOrder string) ([]EntryRow, error) {
+	return a.repo.QueryHistory(search, tagMask, afterCursor1, afterID, limit, sortField, sortOrder)
 }
 
-func (s *sqliteStore) QueryHistory(search string, tagMask int, afterCursor1 string, afterID int64, limit int, sortField string, sortOrder string) ([]EntryRow, error) {
-	baseSQL := `SELECT e.id, e.content_hash, e.source_exe, e.source_title, e.is_favorite, e.created_at, e.updated_at, e.content_length FROM clipboard_entry e`
+func (a *repoAdapter) LoadFormats(ids []int64) (map[int64][]model.FormatEntry, error) {
+	return a.repo.LoadFormats(ids)
+}
 
-	var conditions []string
-	var args []any
+func (a *repoAdapter) UpsertDedup(hash, sourceEXE, sourceTitle string, tagMask int, now string, contentLength int) (bool, error) {
+	return a.repo.UpsertDedup(hash, sourceEXE, sourceTitle, tagMask, now, contentLength)
+}
 
-	if tagMask&32 != 0 {
-		conditions = append(conditions, `e.is_favorite = 1`)
-		tagMask &^= 32
-	}
-	if tagMask != 0 {
-		conditions = append(conditions, `e.tag_mask & ? != 0`)
-		args = append(args, tagMask)
-	}
-	if search != "" {
-		conditions = append(conditions, `e.id IN (SELECT DISTINCT entry_id FROM clipboard_format WHERE content LIKE ?)`)
-		args = append(args, "%"+search+"%")
-	}
-	if afterCursor1 != "" {
-		if sortOrder == "DESC" {
-			conditions = append(conditions, fmt.Sprintf("(e.%s < ? OR (e.%s = ? AND e.id < ?))", sortField, sortField))
-		} else {
-			conditions = append(conditions, fmt.Sprintf("(e.%s > ? OR (e.%s = ? AND e.id > ?))", sortField, sortField))
-		}
-		args = append(args, afterCursor1, afterCursor1, afterID)
-	}
+func (a *repoAdapter) InsertEntry(hash, sourceEXE, sourceTitle string, tagMask int, now string, contentLength int) (int64, error) {
+	return a.repo.InsertEntry(hash, sourceEXE, sourceTitle, tagMask, now, contentLength)
+}
 
-	where := ""
-	if len(conditions) > 0 {
-		where = " WHERE " + conditions[0]
-		for i := 1; i < len(conditions); i++ {
-			where += " AND " + conditions[i]
-		}
-	}
+func (a *repoAdapter) InsertFormat(entryID int64, formatType uint32, content, filePath, formatHash string) error {
+	return a.repo.InsertFormat(entryID, formatType, content, filePath, formatHash)
+}
 
-	query := baseSQL + where + fmt.Sprintf(" ORDER BY e.%s %s, e.id %s LIMIT ?", sortField, sortOrder, sortOrder)
-	args = append(args, limit)
+func (a *repoAdapter) QueryFormatContent(entryID int64, formatType uint32) (string, error) {
+	return a.repo.QueryFormatContent(entryID, formatType)
+}
 
-	rows, err := s.db.Query(query, args...)
+func (a *repoAdapter) QueryImageFilePath(entryID int64) (string, error) {
+	return a.repo.QueryImageFilePath(entryID)
+}
+
+func (a *repoAdapter) UpdateTimestamp(id int64, now string) error {
+	return a.repo.UpdateTimestamp(id, now)
+}
+
+func (a *repoAdapter) DeleteEntry(id int64) ([]string, error) {
+	return a.repo.DeleteEntry(id)
+}
+
+func (a *repoAdapter) ToggleFavorite(id int64, value bool) error {
+	return a.repo.ToggleFavorite(id, value)
+}
+
+func (a *repoAdapter) GetStats() (Stats, error) {
+	st, err := a.repo.GetStats()
 	if err != nil {
-		return nil, fmt.Errorf("query history: %w", err)
+		return Stats{}, err
 	}
-	defer rows.Close()
-
-	var result []EntryRow
-	for rows.Next() {
-		var r EntryRow
-		if err := rows.Scan(&r.ID, &r.ContentHash, &r.SourceEXE, &r.SourceTitle, &r.IsFavorite, &r.CreatedAt, &r.UpdatedAt, &r.ContentLength); err != nil {
-			return nil, fmt.Errorf("scan entry: %w", err)
-		}
-		result = append(result, r)
-	}
-	return result, nil
+	return Stats(st), nil
 }
 
-func (s *sqliteStore) LoadFormats(ids []int64) (map[int64][]model.FormatEntry, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	idArgs := make([]any, len(ids))
-	placeholders := make([]byte, 0, len(ids)*3)
-	placeholders = append(placeholders, '?')
-	idArgs[0] = ids[0]
-	for i := 1; i < len(ids); i++ {
-		placeholders = append(placeholders, ',', '?')
-		idArgs[i] = ids[i]
-	}
-
-	rows, err := s.db.Query(
-		`SELECT entry_id, format_type, COALESCE(content, ''), COALESCE(file_path, '') FROM clipboard_format WHERE entry_id IN (`+string(placeholders)+`)`,
-		idArgs...,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	m := make(map[int64][]model.FormatEntry)
-	for rows.Next() {
-		var eid int64
-		var ft model.FormatEntry
-		if err := rows.Scan(&eid, &ft.FormatType, &ft.Content, &ft.FilePath); err != nil {
-			continue
-		}
-		m[eid] = append(m[eid], ft)
-	}
-	return m, nil
+func (a *repoAdapter) Cleanup(retainDays int) (int64, []string, error) {
+	return a.repo.Cleanup(retainDays)
 }
 
-func (s *sqliteStore) UpsertDedup(hash, sourceEXE, sourceTitle string, tagMask int, now string, contentLength int) (bool, error) {
-	result, err := s.db.Exec(
-		`UPDATE clipboard_entry SET updated_at = ?, source_exe = ?, source_title = ?, tag_mask = ?, content_length = ? WHERE content_hash = ?`,
-		now, sourceEXE, sourceTitle, tagMask, contentLength, hash,
-	)
-	if err != nil {
-		return false, err
-	}
-	n, _ := result.RowsAffected()
-	return n > 0, nil
+func (a *repoAdapter) ClearAll(keepFavorites bool) ([]string, error) {
+	return a.repo.ClearAll(keepFavorites)
 }
 
-func (s *sqliteStore) InsertEntry(hash, sourceEXE, sourceTitle string, tagMask int, now string, contentLength int) (int64, error) {
-	res, err := s.db.Exec(
-		`INSERT INTO clipboard_entry (content_hash, source_exe, source_title, tag_mask, content_length, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		hash, sourceEXE, sourceTitle, tagMask, contentLength, now, now,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
+func (a *repoAdapter) HasFileFormatByHash(hash string) (bool, error) {
+	return a.repo.HasFileFormatByHash(hash)
 }
 
-func (s *sqliteStore) InsertFormat(entryID int64, formatType uint32, content, filePath, formatHash string) error {
-	_, err := s.db.Exec(
-		`INSERT OR IGNORE INTO clipboard_format (entry_id, format_type, content, file_path, format_hash) VALUES (?, ?, ?, ?, ?)`,
-		entryID, formatType, content, filePath, formatHash,
-	)
-	return err
-}
-
-func (s *sqliteStore) QueryFormatContent(entryID int64, formatType uint32) (string, error) {
-	var content string
-	err := s.db.QueryRow(
-		`SELECT COALESCE(f.content, '') FROM clipboard_format f WHERE f.entry_id = ? AND f.format_type = ?`,
-		entryID, formatType,
-	).Scan(&content)
-	return content, err
-}
-
-func (s *sqliteStore) QueryImageFilePath(entryID int64) (string, error) {
-	var filePath string
-	err := s.db.QueryRow(
-		`SELECT COALESCE(f.file_path, '') FROM clipboard_format f WHERE f.entry_id = ? AND f.file_path != '' LIMIT 1`,
-		entryID,
-	).Scan(&filePath)
-	if err != nil {
-		return "", err
-	}
-	if filePath == "" {
-		return "", fmt.Errorf("no image for entry %d", entryID)
-	}
-	return filePath, nil
-}
-
-func (s *sqliteStore) UpdateTimestamp(id int64, now string) error {
-	_, err := s.db.Exec(`UPDATE clipboard_entry SET updated_at = ? WHERE id = ?`, now, id)
-	return err
-}
-
-func (s *sqliteStore) DeleteEntry(id int64) ([]string, error) {
-	rows, err := s.db.Query(`SELECT file_path FROM clipboard_format WHERE entry_id = ? AND file_path != ''`, id)
-	if err == nil {
-		defer rows.Close()
-		var paths []string
-		for rows.Next() {
-			var p string
-			if err := rows.Scan(&p); err == nil && p != "" {
-				paths = append(paths, p)
-			}
-		}
-	}
-	_, err = s.db.Exec(`DELETE FROM clipboard_entry WHERE id = ?`, id)
-	return nil, err
-}
-
-func (s *sqliteStore) ToggleFavorite(id int64, value bool) error {
-	v := 0
-	if value {
-		v = 1
-	}
-	_, err := s.db.Exec(`UPDATE clipboard_entry SET is_favorite = ? WHERE id = ?`, v, id)
-	return err
-}
-
-func (s *sqliteStore) GetStats() (Stats, error) {
-	var st Stats
-	err := s.db.QueryRow(
-		`SELECT (SELECT COUNT(*) FROM clipboard_entry), COALESCE((SELECT SUM(LENGTH(content)) FROM clipboard_format), 0)`,
-	).Scan(&st.Count, &st.TotalBytes)
-	if err != nil {
-		return Stats{}, fmt.Errorf("get stats: %w", err)
-	}
-	return st, nil
-}
-
-func (s *sqliteStore) Cleanup(retainDays int) (int64, []string, error) {
-	cutoff := fmt.Sprintf("strftime('%%Y-%%m-%%dT%%H:%%M:%%f', 'now', '-%d days')", retainDays)
-
-	rows, err := s.db.Query(
-		`SELECT f.file_path FROM clipboard_format f
-		 JOIN clipboard_entry e ON f.entry_id = e.id
-		 WHERE e.updated_at < `+cutoff+` AND e.is_favorite = 0 AND f.file_path != ''`,
-	)
-	if err == nil {
-		defer rows.Close()
-		var paths []string
-		for rows.Next() {
-			var p string
-			if err := rows.Scan(&p); err == nil && p != "" {
-				paths = append(paths, p)
-			}
-		}
-	}
-
-	result, err := s.db.Exec(
-		`DELETE FROM clipboard_entry WHERE updated_at < `+cutoff+` AND is_favorite = 0`,
-	)
-	if err != nil {
-		return 0, nil, err
-	}
-	n, _ := result.RowsAffected()
-	return n, rowsPathOrNil(rows), nil
-}
-
-func (s *sqliteStore) ClearAll(keepFavorites bool) ([]string, error) {
-	// Step 1: collect image paths (fully consume rows before DELETE).
-	var paths []string
-	{
-		var query string
-		if keepFavorites {
-			query = `SELECT f.file_path FROM clipboard_format f
-				JOIN clipboard_entry e ON f.entry_id = e.id
-				WHERE e.is_favorite = 0 AND f.file_path != ''`
-		} else {
-			query = `SELECT file_path FROM clipboard_format WHERE file_path != ''`
-		}
-		rows, err := s.db.Query(query)
-		if err == nil {
-			for rows.Next() {
-				var p string
-				if err := rows.Scan(&p); err == nil && p != "" {
-					paths = append(paths, p)
-				}
-			}
-			rows.Close()
-		}
-	}
-
-	// Step 2: delete entries (no open result sets at this point).
-	if keepFavorites {
-		_, err := s.db.Exec(`DELETE FROM clipboard_entry WHERE is_favorite = 0`)
-		return paths, err
-	}
-	_, err := s.db.Exec(`DELETE FROM clipboard_entry`)
-	return paths, err
-}
-
-func (s *sqliteStore) HasFileFormatByHash(hash string) (bool, error) {
-	var count int
-	err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM clipboard_format WHERE entry_id = (SELECT id FROM clipboard_entry WHERE content_hash = ?) AND format_type = 15`,
-		hash,
-	).Scan(&count)
-	return count > 0, err
-}
-
-func (s *sqliteStore) QueryImageEntryIDs(tagMask int, search string) ([]int64, error) {
-	baseSQL := `SELECT e.id FROM clipboard_entry e
-		JOIN clipboard_format f ON f.entry_id = e.id AND f.format_type IN (8, 17)
-		WHERE 1=1`
-	var args []any
-
-	if tagMask&32 != 0 {
-		baseSQL += ` AND e.is_favorite = 1`
-		tagMask &^= 32
-	}
-	if tagMask != 0 {
-		baseSQL += ` AND e.tag_mask & ? != 0`
-		args = append(args, tagMask)
-	}
-	if search != "" {
-		baseSQL += ` AND e.id IN (SELECT DISTINCT entry_id FROM clipboard_format WHERE content LIKE ?)`
-		args = append(args, "%"+search+"%")
-	}
-
-	baseSQL += ` GROUP BY e.id ORDER BY e.updated_at DESC`
-	rows, err := s.db.Query(baseSQL, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err == nil {
-			ids = append(ids, id)
-		}
-	}
-	return ids, nil
-}
-
-// rowsPathOrNil extracts file paths from a *sql.Rows if available.
-func rowsPathOrNil(rows *sql.Rows) []string {
-	if rows == nil {
-		return nil
-	}
-	defer rows.Close()
-	var paths []string
-	for rows.Next() {
-		var p string
-		if err := rows.Scan(&p); err == nil && p != "" {
-			paths = append(paths, p)
-		}
-	}
-	return paths
-}
-
-// logErr is a helper to silently handle expected errors.
-func logErr(err error) {
-	if err != nil {
-		log.Printf("[store] error: %v", err)
-	}
+func (a *repoAdapter) QueryImageEntryIDs(tagMask int, search string) ([]int64, error) {
+	return a.repo.QueryImageEntryIDs(tagMask, search)
 }

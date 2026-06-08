@@ -45,7 +45,7 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       return
     }
 
-    // Tab switching: Left/Right arrow keys.
+    // Tab switching: Left/Right arrow keys (with or without Alt).
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Tab') {
       e.preventDefault()
       const currentIdx = tags.findIndex(t => t.id === activeTag)
@@ -56,7 +56,7 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       return
     }
 
-    // Entry navigation: Up/Down arrow keys.
+    // Entry navigation: Up/Down arrow keys (with or without Alt).
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setFocusedIdx(prev => Math.min(prev + 1, entries.length - 1))
@@ -75,8 +75,25 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       return
     }
 
+    // Alt+Enter: force paste (same as Ctrl+Enter).
+    if (e.altKey && e.key === 'Enter' && focusedIdx >= 0) {
+      e.preventDefault()
+      useEntry(entries[focusedIdx].id, 'paste')
+      return
+    }
+
     // Delete: remove focused entry.
     if (e.key === 'Delete' && focusedIdx >= 0) {
+      e.preventDefault()
+      const id = entries[focusedIdx].id
+      const newLen = entries.length - 1
+      setFocusedIdx(prev => prev >= newLen ? Math.max(newLen - 1, -1) : prev)
+      deleteEntry(id)
+      return
+    }
+
+    // Alt+Delete: remove focused entry (same as Delete).
+    if (e.altKey && e.key === 'Delete' && focusedIdx >= 0) {
       e.preventDefault()
       const id = entries[focusedIdx].id
       const newLen = entries.length - 1
@@ -90,6 +107,35 @@ export function useKeyboardNavigation({ entries, focusedIdx, settings, useEntry,
       e.preventDefault()
       const entry = entries[focusedIdx]
       toggleFavorite(entry.id, !entry.is_favorite)
+      return
+    }
+
+    // Alt+Space: toggle favorite on focused entry (same as Space).
+    if (e.altKey && e.key === ' ' && focusedIdx >= 0) {
+      e.preventDefault()
+      const entry = entries[focusedIdx]
+      toggleFavorite(entry.id, !entry.is_favorite)
+      return
+    }
+
+    // Alt+E: open focused entry in editor (same as Ctrl+E).
+    if (e.altKey && e.key === 'e' && focusedIdx >= 0) {
+      e.preventDefault()
+      onOpenEditor(entries[focusedIdx].id)
+      return
+    }
+
+    // Alt+C: copy focused entry.
+    if (e.altKey && e.key === 'c' && focusedIdx >= 0) {
+      e.preventDefault()
+      useEntry(entries[focusedIdx].id, 'copy')
+      return
+    }
+
+    // Alt+V: paste focused entry (force paste).
+    if (e.altKey && e.key === 'v' && focusedIdx >= 0) {
+      e.preventDefault()
+      useEntry(entries[focusedIdx].id, 'paste')
       return
     }
 

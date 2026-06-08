@@ -10,17 +10,19 @@ import (
 
 // Data holds user-configurable settings.
 type Data struct {
-	Hotkey         string          `json:"hotkey"`                   // "Alt+V"
-	RetainDays     int             `json:"retain_days"`              // 30
-	DefaultAction  string          `json:"default_action"`           // "copy" or "paste"
-	AutoStart      bool            `json:"auto_start"`
-	StartMinimized bool            `json:"start_minimized"`          // start minimized to tray
-	NotifyEnabled  bool            `json:"notify_enabled"`           // show toast on new clipboard
-	PasteOrder     string          `json:"paste_order"`              // "normal" / "stack" / "queue"
-	ActionConfig   json.RawMessage `json:"action_config,omitempty"`  // frontend-managed, Go pass-through
-	SortField      string          `json:"sort_field"`               // "updated_at" / "content_length"
-	SortOrder      string          `json:"sort_order"`               // "asc" / "desc"
-	Theme          string          `json:"theme"`                    // "a" (冷调极简) / "b" (暖调高效) / "c" (深色沉浸)
+	Hotkey            string          `json:"hotkey"`                   // "Alt+V"
+	RetainDays        int             `json:"retain_days"`              // 30
+	DefaultAction     string          `json:"default_action"`           // "copy" or "paste"
+	AutoStart         bool            `json:"auto_start"`
+	StartMinimized    bool            `json:"start_minimized"`          // start minimized to tray
+	NotifyEnabled     bool            `json:"notify_enabled"`           // show toast on new clipboard
+	PasteOrder        string          `json:"paste_order"`              // "normal" / "stack" / "queue"
+	ActionConfig      json.RawMessage `json:"action_config,omitempty"`  // frontend-managed, Go pass-through
+	SortField         string          `json:"sort_field"`               // "updated_at" / "content_length"
+	SortOrder         string          `json:"sort_order"`               // "asc" / "desc"
+	Theme             string          `json:"theme"`                    // "a" (冷调极简) / "b" (暖调高效) / "c" (深色沉浸)
+	AutoClearSearch   bool            `json:"auto_clear_search"`        // auto clear search on window show
+	AutoClearSeconds  int             `json:"auto_clear_seconds"`       // seconds threshold for auto clear (0 = always clear)
 }
 
 // SettingsReader provides read-only access to settings.
@@ -33,7 +35,7 @@ type Service struct {
 	mu                sync.RWMutex
 	path              string
 	data              Data
-	onHotkeyChange    func(old, new string)
+	onHotkeyChange    func(old, new string) error
 	onSettingsChange  func(old, new Data)
 }
 
@@ -58,7 +60,10 @@ func NewService(basePath string) *Service {
 }
 
 // OnHotkeyChange sets a callback invoked when the hotkey setting changes.
-func (s *Service) OnHotkeyChange(fn func(old, new string)) {
+// The callback receives the old and new hotkey strings.
+// If it returns an error, the hotkey change is rejected and SaveSettings
+// returns that error to the frontend.
+func (s *Service) OnHotkeyChange(fn func(old, new string) error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onHotkeyChange = fn
@@ -74,16 +79,18 @@ func (s *Service) OnSettingsChange(fn func(old, new Data)) {
 // Defaults returns a fresh settings struct with defaults.
 func Defaults() Data {
 	return Data{
-		Hotkey:         "Alt+V",
-		RetainDays:     30,
-		DefaultAction:  "copy",
-		AutoStart:      false,
-		StartMinimized: false,
-		NotifyEnabled:  false,
-		PasteOrder:     "normal",
-		SortField:      "updated_at",
-		SortOrder:      "desc",
-		Theme:          "a",
+		Hotkey:           "Alt+V",
+		RetainDays:       30,
+		DefaultAction:    "copy",
+		AutoStart:        false,
+		StartMinimized:   false,
+		NotifyEnabled:    false,
+		PasteOrder:       "normal",
+		SortField:        "updated_at",
+		SortOrder:        "desc",
+		Theme:            "a",
+		AutoClearSearch:  false,
+		AutoClearSeconds: 30,
 	}
 }
 
@@ -137,19 +144,32 @@ func (s *Service) GetSettings() Data {
 }
 
 // SaveSettings updates and persists settings.
+// If the hotkey has changed, the onHotkeyChange callback is invoked first.
+// If the callback returns an error, the change is rejected and returned.
 func (s *Service) SaveSettings(d Data) error {
 	s.mu.Lock()
 	oldData := s.data
 	oldHotkey := s.data.Hotkey
-	s.data = d
-	newHotkey := d.Hotkey
 	hkCB := s.onHotkeyChange
 	scCB := s.onSettingsChange
+
+	newHotkey := d.Hotkey
+	hotkeyChanged := oldHotkey != newHotkey
+
+	if hotkeyChanged && hkCB != nil {
+		// Release lock while the callback may do I/O (system hotkey registration).
+		s.mu.Unlock()
+		err := hkCB(oldHotkey, newHotkey)
+		s.mu.Lock()
+		if err != nil {
+			s.mu.Unlock()
+			return err
+		}
+	}
+
+	s.data = d
 	s.mu.Unlock()
 
-	if oldHotkey != newHotkey && hkCB != nil {
-		hkCB(oldHotkey, newHotkey)
-	}
 	// Notify general settings change for other fields.
 	if scCB != nil && changedExceptHotkey(oldData, d) {
 		scCB(oldData, d)
@@ -167,5 +187,7 @@ func changedExceptHotkey(a, b Data) bool {
 		a.PasteOrder != b.PasteOrder ||
 		a.SortField != b.SortField ||
 		a.SortOrder != b.SortOrder ||
-		a.Theme != b.Theme
+		a.Theme != b.Theme ||
+		a.AutoClearSearch != b.AutoClearSearch ||
+		a.AutoClearSeconds != b.AutoClearSeconds
 }

@@ -1,13 +1,12 @@
-import { Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen } from 'lucide-react'
+import { Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio, Link } from 'lucide-react'
 import { getById } from '../actions'
 
 const ICON_MAP = {
-  Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen,
+  Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio, Url: Link,
 }
 
 /**
  * Inline action button strip that appears next to existing Copy/Paste buttons.
- * Props: actionIds (string[]), onClick (actionId => void)
  */
 export default function ActionButtons({ actionIds, onClick }) {
   if (!actionIds || actionIds.length === 0) return null
@@ -21,7 +20,7 @@ export default function ActionButtons({ actionIds, onClick }) {
         return (
           <button
             key={id}
-            style={styles.btn}
+            className="w-7 h-7 flex items-center justify-center border-none bg-transparent text-primary cursor-pointer rounded transition-all duration-fast"
             onClick={(e) => { e.stopPropagation(); onClick(id) }}
             title={action.label}
           >
@@ -31,13 +30,4 @@ export default function ActionButtons({ actionIds, onClick }) {
       })}
     </>
   )
-}
-
-const styles = {
-  btn: {
-    width: '28px', height: '28px', display: 'flex', alignItems: 'center',
-    justifyContent: 'center', border: 'none', background: 'transparent',
-    color: 'var(--color-primary)', cursor: 'pointer', borderRadius: '4px',
-    transition: 'all var(--transition-fast)',
-  },
 }

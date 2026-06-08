@@ -10,4 +10,10 @@ export default defineConfig({
     strictPort: true,
   },
   plugins: [react(), wails("./bindings")],
+  onLog(level, msg) {
+    // Suppress known eval warnings from web-tree-sitter (Emscripten WASM glue code).
+    if (level === 'warn' && msg.includes('web-tree-sitter') && msg.includes('eval')) {
+      return false
+    }
+  },
 });

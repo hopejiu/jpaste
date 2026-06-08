@@ -9,6 +9,8 @@ import SettingsPage from './pages/SettingsPage'
 import JsonViewPage from './pages/JsonViewPage'
 import ImageViewPage from './pages/ImageViewPage'
 import ToastPage from './pages/ToastPage'
+import CurlViewPage from './pages/CurlViewPage'
+import WsViewPage from './pages/WsViewPage'
 
 function AppContent() {
   const navigate = useNavigate()
@@ -25,8 +27,12 @@ function AppContent() {
   }, [themeClass])
 
   // Handle navigate event from Go (system tray).
+  // Only respond in the main window (pathname === '/'), not in secondary
+  // windows such as JSON viewer (/json-view) or image viewer (/image-view).
   useEffect(() => {
+    const isMainWindow = window.location.pathname === '/'
     const unsub = Events.On(EVENTS.NAVIGATE, (evt) => {
+      if (!isMainWindow) return
       const path = evt.data || '/'
       navigate(path)
     })
@@ -47,15 +53,14 @@ function AppContent() {
   }, [setSearch])
 
   return (
-    <div className={themeClass} style={{
-      width: '100%', height: '100vh', display: 'flex', flexDirection: 'column',
-      background: 'var(--color-surface)',
-    }}>
+    <div className={`${themeClass} w-screen h-screen flex flex-col`} style={{ background: 'var(--color-surface)' }}>
       <Routes>
         <Route path="/" element={<MainPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/json-view" element={<JsonViewPage />} />
         <Route path="/image-view" element={<ImageViewPage />} />
+        <Route path="/curl-view" element={<CurlViewPage />} />
+        <Route path="/ws-view" element={<WsViewPage />} />
         <Route path="/toast" element={<ToastPage />} />
       </Routes>
     </div>

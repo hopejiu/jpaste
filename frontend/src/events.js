@@ -1,6 +1,5 @@
 export const EVENTS = {
   CLIPBOARD_UPDATED: 'clipboard-updated',
-  SYNC_STATUS: 'sync-status',
   WINDOW_SHOWN:  'window-shown',
   WINDOW_HIDING: 'window-hiding',
   NAVIGATE: 'navigate',
