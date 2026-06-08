@@ -194,6 +194,20 @@ func captureAll() model.CapturedData {
 
 	formats := enumFormats()
 	log.Printf("[clipboard] EnumFormats count=%d", len(formats))
+
+	// Pre-scan: detect whether the clipboard contains any image format (CF_DIB / CF_DIBV5).
+	// When present, unknown registered formats (e.g. PixPin's internal binary identifier)
+	// should be skipped — they are application metadata, not user-visible text.
+	// Known formats like "HTML Format" coexist with CF_UNICODETEXT, which is captured
+	// by the isTextFormat branch regardless.
+	hasImage := false
+	for _, f := range formats {
+		if isImageFormat(f) {
+			hasImage = true
+			break
+		}
+	}
+
 	var cf []model.CapturedFormat
 
 	for _, f := range formats {
@@ -218,6 +232,10 @@ func captureAll() model.CapturedData {
 			}
 		} else {
 			name := formatName(f)
+			if hasImage {
+				log.Printf("[clipboard] Format %q(%d): skipped (image present)", name, f)
+				continue
+			}
 			// Many registered formats (e.g. "code/file-list", "HTML Format") are
 			// actually text-based. Try reading them as text.
 			txt := readClipboardText(f)

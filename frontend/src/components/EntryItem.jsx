@@ -125,11 +125,27 @@ export default function EntryItem({
               )}
             </div>
             {hasImg && thumb?.url && (
-              <img
-                src={thumb.url}
-                alt=""
-                className="w-9 h-9 rounded object-cover flex-shrink-0 ml-2"
-              />
+              <div
+                className="relative w-9 h-9 rounded flex-shrink-0 ml-2 cursor-pointer overflow-hidden"
+                onClick={(e) => { e.stopPropagation(); onImageClick(entry) }}
+                onMouseEnter={(e) => {
+                  const o = e.currentTarget.querySelector('[data-sm-overlay]')
+                  if (o) o.style.opacity = '1'
+                }}
+                onMouseLeave={(e) => {
+                  const o = e.currentTarget.querySelector('[data-sm-overlay]')
+                  if (o) o.style.opacity = '0'
+                }}
+              >
+                <img src={thumb.url} alt="" className="w-9 h-9 rounded object-cover block" />
+                <div
+                  data-sm-overlay
+                  className="absolute inset-0 flex items-center justify-center rounded pointer-events-none"
+                  style={{ background: 'rgba(0,0,0,0.35)', opacity: 0, transition: 'opacity 120ms' }}
+                >
+                  <ZoomIn size={12} color="white" />
+                </div>
+              </div>
             )}
           </div>
         )}

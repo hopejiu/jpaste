@@ -161,6 +161,14 @@ func PrimaryText(formats []CapturedFormat) string {
 			return f.Text
 		}
 	}
+	// When image formats are present, don't fall through to unknown/custom
+	// formats which may contain binary garbage (e.g. PixPin's internal
+	// clipboard identifier) rather than actual text.
+	for _, f := range formats {
+		if IsImageFormat(f.FormatType) {
+			return ""
+		}
+	}
 	for _, f := range formats {
 		if f.Text != "" {
 			return f.Text
@@ -178,6 +186,13 @@ func PrimaryTextFromEntries(formats []FormatEntry) string {
 	for _, f := range formats {
 		if f.FormatType == CF_HDROP && f.Content != "" {
 			return f.Content
+		}
+	}
+	// When image formats are present, skip unknown formats that may contain
+	// binary garbage from custom clipboard format handlers.
+	for _, f := range formats {
+		if IsImageFormat(f.FormatType) {
+			return ""
 		}
 	}
 	for _, f := range formats {

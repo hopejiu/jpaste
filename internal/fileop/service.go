@@ -50,7 +50,11 @@ func (s *Service) OpenInEditor(id int64) error {
 	tmpDir := filepath.Join(os.Getenv("TEMP"), "jPaste")
 	os.MkdirAll(tmpDir, 0700)
 
-	tmpPath := filepath.Join(tmpDir, fmt.Sprintf("jpaste_%d.txt", time.Now().UnixNano()))
+	ext := detectFormat(content)
+	if ext == "" {
+		ext = "txt"
+	}
+	tmpPath := filepath.Join(tmpDir, fmt.Sprintf("jpaste_%d.%s", time.Now().UnixNano(), ext))
 	if err := os.WriteFile(tmpPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("write temp file: %w", err)
 	}

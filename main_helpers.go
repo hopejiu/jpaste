@@ -102,6 +102,15 @@ func (h *watcherHandler) handle(data model.CapturedData) {
 			previewSource = entry.Content
 		}
 		contentPreview := util.Truncate(previewSource, 10)
+		if contentPreview == "" {
+			// Image-only entry: show a meaningful label.
+			for _, f := range data.Formats {
+				if model.IsImageFormat(f.FormatType) {
+					contentPreview = "[图片]"
+					break
+				}
+			}
+		}
 		if h.filoStack.Enabled() {
 			modeLabel := h.filoStack.ModeName()
 			h.toastSvc.ShowToast("jPaste",
