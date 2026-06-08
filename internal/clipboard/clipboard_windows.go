@@ -58,6 +58,13 @@ var (
 	procGetWindowThreadProcessId      = user32.NewProc("GetWindowThreadProcessId")
 	procAttachThreadInput             = user32.NewProc("AttachThreadInput")
 	procPostMessage                   = user32.NewProc("PostMessageW")
+	procGetClipboardSequenceNumber   = user32.NewProc("GetClipboardSequenceNumber")
+
+	// OLE clipboard support — for apps that use IDataObject instead of SetClipboardData.
+	ole32                = syscall.NewLazyDLL("ole32.dll")
+	procOleGetClipboard  = ole32.NewProc("OleGetClipboard")
+	procOleInitialize    = ole32.NewProc("OleInitialize")
+	procReleaseStgMedium = ole32.NewProc("ReleaseStgMedium")
 )
 
 func isTextFormat(f uint32) bool {
@@ -70,6 +77,263 @@ func isTextFormat(f uint32) bool {
 
 func isImageFormat(f uint32) bool {
 	return f == win.CF_DIB || f == CFDIBV5
+}
+
+// --- OLE clipboard fallback ---
+
+const (
+	cfCF_UNICODETEXT = 13
+	tyMED_HGLOBAL    = 1
+	dvASPECT_CONTENT = 1
+)
+
+// --- Delayed rendering retry ---
+
+// pendingFormat represents a clipboard format that was enumerated but
+// returned NULL from GetClipboardData, suggesting delayed rendering.
+type pendingFormat struct {
+	formatType uint32
+	isText     bool
+	isImage    bool
+	isHDrop    bool
+}
+
+// retryIntervals is the escalating delay before each retry attempt.
+// Total: 100+150+250+400+600+900+1300+1800 = 5500ms ≈ 5.5s
+var retryIntervals = []int{100, 150, 250, 400, 600, 900, 1300, 1800}
+
+// --- formatEtc mirrors Win32 FORMATETC (x64 layout).
+type formatEtc struct {
+	cfFormat uint16
+	_pad1    [6]byte // align ptd to 8 bytes
+	ptd      uintptr
+	dwAspect uint32
+	lindex   int32
+	tymed    uint32
+	_pad2    [4]byte // align struct size to 8
+}
+
+// stgMedium mirrors Win32 STGMEDIUM (x64 layout).
+type stgMedium struct {
+	tymed          uint32
+	_pad           [4]byte
+	hGlobal        uintptr
+	pUnkForRelease uintptr
+}
+
+// oleGetClipboardText uses OLE IDataObject to retrieve clipboard text.
+// This is a fallback for apps that place data via OleSetClipboard (e.g. Office,
+// some file managers) where standard GetClipboardData returns NULL for synthesized
+// formats like CF_TEXT / CF_UNICODETEXT.
+func oleGetClipboardText() string {
+	// OleInitialize is idempotent per-thread (returns S_FALSE if already init).
+	hr, _, _ := procOleInitialize.Call(0)
+	if hr != 0 && hr != 1 { // S_OK or S_FALSE
+		return ""
+	}
+
+	var dataObj uintptr
+	hr, _, _ = procOleGetClipboard.Call(uintptr(unsafe.Pointer(&dataObj)))
+	if hr != 0 || dataObj == 0 {
+		return ""
+	}
+	defer releaseCOMObject(dataObj)
+
+	// IDataObject::GetData is vtable index 3.
+	vtablePtr := *(*uintptr)(unsafe.Pointer(dataObj))
+	getDataFn := *(*uintptr)(unsafe.Pointer(vtablePtr + 3*unsafe.Sizeof(uintptr(0))))
+
+	// Try CF_UNICODETEXT first, then fall back to CF_TEXT.
+	for _, cf := range []uint16{cfCF_UNICODETEXT, 1} {
+		var fe formatEtc
+		fe.cfFormat = cf
+		fe.dwAspect = dvASPECT_CONTENT
+		fe.tymed = tyMED_HGLOBAL
+
+		var stg stgMedium
+		hr, _, _ = syscall.SyscallN(getDataFn, dataObj,
+			uintptr(unsafe.Pointer(&fe)), uintptr(unsafe.Pointer(&stg)))
+		if hr != 0 {
+			continue
+		}
+
+		text := readStgMediumText(&stg, cf)
+		procReleaseStgMedium.Call(uintptr(unsafe.Pointer(&stg)))
+		if text != "" {
+			log.Printf("[clipboard] OLE fallback: got %d chars via format %d", len(text), cf)
+			return text
+		}
+	}
+	return ""
+}
+
+// readStgMediumText reads text content from an STGMEDIUM with HGLOBAL storage.
+func readStgMediumText(stg *stgMedium, cf uint16) string {
+	if stg.hGlobal == 0 {
+		return ""
+	}
+	ptr := win.GlobalLock(win.HGLOBAL(stg.hGlobal))
+	if ptr == nil {
+		return ""
+	}
+	defer win.GlobalUnlock(win.HGLOBAL(stg.hGlobal))
+
+	size, _, _ := procGlobalSize.Call(stg.hGlobal)
+	if size == 0 {
+		return ""
+	}
+
+	if cf == cfCF_UNICODETEXT {
+		return utf16BytesToString(unsafe.Slice((*byte)(ptr), size))
+	}
+	return string(bytesFromPtr(ptr, int(size)))
+}
+
+// releaseCOMObject calls IUnknown::Release on a COM interface pointer.
+func releaseCOMObject(obj uintptr) {
+	if obj == 0 {
+		return
+	}
+	vtablePtr := *(*uintptr)(unsafe.Pointer(obj))
+	releaseFn := *(*uintptr)(unsafe.Pointer(vtablePtr + 2*unsafe.Sizeof(uintptr(0))))
+	syscall.SyscallN(releaseFn, obj)
+}
+
+// buildCapturedData constructs a full CapturedData from captured formats,
+// computing the hash and fetching the clipboard source info.
+func buildCapturedData(cf []model.CapturedFormat) (model.CapturedData, bool) {
+	textContent := model.PrimaryText(cf)
+
+	var hashInput []byte
+	if textContent != "" {
+		hashInput = []byte(textContent)
+	} else {
+		for _, f := range cf {
+			if isImageFormat(f.FormatType) {
+				hashInput = imagePixelHash(f.RawData)
+				break
+			}
+		}
+	}
+	if len(hashInput) == 0 {
+		for _, f := range cf {
+			if f.FormatType == win.CF_HDROP && f.Text != "" {
+				hashInput = []byte(f.Text)
+				break
+			}
+		}
+	}
+	if len(hashInput) == 0 {
+		return model.CapturedData{}, false
+	}
+
+	h := sha256.Sum256(hashInput)
+	hashStr := fmt.Sprintf("%x", h[:])
+	if hasHdropFormat(cf) {
+		hashStr = "hdrop:" + hashStr
+	}
+
+	exe, title := getClipboardSource()
+
+	// Self WebView2 override (same as in captureAll).
+	if strings.Contains(strings.ToLower(exe), "msedgewebview2") {
+		if pid := getClipboardOwnerPID(); pid > 0 && isOwnWebView2Process(pid) {
+			exe = "jPaste"
+			title = ""
+		}
+	}
+
+	return model.CapturedData{
+		Formats:     cf,
+		SourceEXE:   exe,
+		SourceTitle: title,
+		PrimaryHash: hashStr,
+	}, true
+}
+
+// delayedRetryLoop attempts to re-read clipboard formats that were
+// delay-rendered. It runs in a background goroutine and sends the
+// captured data via dataCh on success. It guards against clipboard
+// changes by comparing GetClipboardSequenceNumber.
+func delayedRetryLoop(hwnd win.HWND, initialSeq uint32, pending []pendingFormat, dataCh chan<- model.CapturedData) {
+	for i, delayMs := range retryIntervals {
+		time.Sleep(time.Duration(delayMs) * time.Millisecond)
+
+		// Guard: clipboard changed since we started retrying.
+		seq, _, _ := procGetClipboardSequenceNumber.Call()
+		if seq != uintptr(initialSeq) {
+			log.Printf("[clipboard] Delayed retry abandoned at attempt %d: clipboard sequence changed", i+1)
+			return
+		}
+
+		if !win.OpenClipboard(hwnd) {
+			log.Printf("[clipboard] Delayed retry attempt %d: OpenClipboard failed, waiting", i+1)
+			continue
+		}
+
+		var cf []model.CapturedFormat
+		for _, pf := range pending {
+			switch {
+			case pf.isText:
+				txt := readClipboardText(pf.formatType)
+				if txt != "" {
+					cf = append(cf, model.CapturedFormat{FormatType: pf.formatType, Text: txt})
+				}
+			case pf.isImage:
+				raw := readClipboardBytes(pf.formatType)
+				if len(raw) > 0 {
+					cf = append(cf, model.CapturedFormat{FormatType: pf.formatType, RawData: raw})
+				}
+			case pf.isHDrop:
+				txt := readClipboardHDROP()
+				if txt != "" {
+					cf = append(cf, model.CapturedFormat{FormatType: pf.formatType, Text: txt})
+				}
+			}
+		}
+		win.CloseClipboard()
+
+		if len(cf) > 0 {
+			data, ok := buildCapturedData(cf)
+			if ok {
+				log.Printf("[clipboard] Delayed render succeeded after %d/%d retries, hash=%s",
+					i+1, len(retryIntervals), data.PrimaryHash[:12])
+				select {
+				case dataCh <- data:
+				default:
+					log.Println("[clipboard] WARNING: data channel full during delayed retry")
+				}
+				return
+			}
+		}
+
+		// On final attempt, also try OLE fallback for text formats.
+		if i == len(retryIntervals)-1 {
+			hasText := false
+			for _, pf := range pending {
+				if pf.isText {
+					hasText = true
+					break
+				}
+			}
+			if hasText {
+				if txt := oleGetClipboardText(); txt != "" {
+					cf := []model.CapturedFormat{{FormatType: win.CF_UNICODETEXT, Text: txt}}
+					data, ok := buildCapturedData(cf)
+					if ok {
+						log.Printf("[clipboard] Delayed render via OLE fallback on final attempt, hash=%s", data.PrimaryHash[:12])
+						select {
+						case dataCh <- data:
+						default:
+							log.Println("[clipboard] WARNING: data channel full during delayed OLE retry")
+						}
+						return
+					}
+				}
+			}
+		}
+	}
+	log.Println("[clipboard] Delayed retry exhausted, clipboard content not rendered")
 }
 
 func startWindowsMonitor(onCapture OnCapture) (func(), error) {
@@ -131,7 +395,7 @@ func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 			}
 			if msg.Message == wmClipboardUpdate {
 				log.Println("[clipboard] WM_CLIPBOARDUPDATE received")
-				data := captureAll()
+				data := captureAll(hwnd, dataCh)
 				if len(data.Formats) > 0 {
 					select {
 					case dataCh <- data:
@@ -185,12 +449,11 @@ func clipboardWndProc(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr
 	return win.DefWindowProc(hwnd, msg, wParam, lParam)
 }
 
-func captureAll() model.CapturedData {
-	if !win.OpenClipboard(0) {
+func captureAll(hwnd win.HWND, dataCh chan<- model.CapturedData) model.CapturedData {
+	if !win.OpenClipboard(hwnd) {
 		log.Println("[clipboard] OpenClipboard failed for capture")
 		return model.CapturedData{}
 	}
-	defer win.CloseClipboard()
 
 	formats := enumFormats()
 	log.Printf("[clipboard] EnumFormats count=%d", len(formats))
@@ -201,14 +464,18 @@ func captureAll() model.CapturedData {
 	// Known formats like "HTML Format" coexist with CF_UNICODETEXT, which is captured
 	// by the isTextFormat branch regardless.
 	hasImage := false
+	hasDataObject := false
 	for _, f := range formats {
 		if isImageFormat(f) {
 			hasImage = true
-			break
+		}
+		if f >= 0xC000 && formatName(f) == "DataObject" {
+			hasDataObject = true
 		}
 	}
 
 	var cf []model.CapturedFormat
+	var pending []pendingFormat
 
 	for _, f := range formats {
 		if f == win.CF_HDROP {
@@ -217,18 +484,24 @@ func captureAll() model.CapturedData {
 			if txt != "" {
 				log.Printf("[clipboard] CF_HDROP parsed: paths=%q", txt)
 				cf = append(cf, model.CapturedFormat{FormatType: f, Text: txt})
+			} else {
+				pending = append(pending, pendingFormat{formatType: f, isHDrop: true})
 			}
 		} else if isTextFormat(f) {
 			txt := readClipboardText(f)
 			log.Printf("[clipboard] Format text(%d): txt.len=%d", f, len(txt))
 			if txt != "" {
 				cf = append(cf, model.CapturedFormat{FormatType: f, Text: txt})
+			} else {
+				pending = append(pending, pendingFormat{formatType: f, isText: true})
 			}
 		} else if isImageFormat(f) {
 			raw := readClipboardBytes(f)
 			log.Printf("[clipboard] Format image(%d): raw.len=%d", f, len(raw))
 			if len(raw) > 0 {
 				cf = append(cf, model.CapturedFormat{FormatType: f, RawData: raw})
+			} else {
+				pending = append(pending, pendingFormat{formatType: f, isImage: true})
 			}
 		} else {
 			name := formatName(f)
@@ -246,64 +519,42 @@ func captureAll() model.CapturedData {
 		}
 	}
 
+	// Close standard clipboard before attempting OLE fallback — OleGetClipboard
+	// manages its own clipboard access and conflicts with an open clipboard.
+	win.CloseClipboard()
+
 	textContent := model.PrimaryText(cf)
-	log.Printf("[clipboard] Captured %d formats, textContent.len=%d", len(cf), len(textContent))
+	log.Printf("[clipboard] Captured %d formats, textContent.len=%d, pending=%d", len(cf), len(textContent), len(pending))
 
-	exe, title := getClipboardSource()
-
-	// When the clipboard owner is msedgewebview2.exe, check whether it belongs to
-	// jPaste's own WebView2 process tree (child of this process). If so, the copy
-	// was done inside jPaste's UI (e.g. Ctrl+C on selected text in the WebView2
-	// viewport), not from an external app. Override the source to "jPaste".
-	if strings.Contains(strings.ToLower(exe), "msedgewebview2") {
-		if pid := getClipboardOwnerPID(); pid > 0 && isOwnWebView2Process(pid) {
-			log.Printf("[clipboard] Capture from own WebView2 child (pid=%d), overriding source to jPaste", pid)
-			exe = "jPaste"
-			title = ""
+	// OLE fallback: apps that use OleSetClipboard (e.g. Office, some file managers)
+	// place data via IDataObject. Standard GetClipboardData returns NULL for
+	// synthesized formats, so we try OLE APIs as a last resort.
+	if textContent == "" && hasDataObject {
+		log.Println("[clipboard] Trying OLE fallback for DataObject format")
+		if txt := oleGetClipboardText(); txt != "" {
+			cf = append(cf, model.CapturedFormat{FormatType: win.CF_UNICODETEXT, Text: txt})
+			textContent = txt
 		}
 	}
 
-	var hashInput []byte
-	if textContent != "" {
-		hashInput = []byte(textContent)
-	} else {
-		for _, f := range cf {
-			if isImageFormat(f.FormatType) {
-				hashInput = imagePixelHash(f.RawData)
-				break
-			}
-		}
-	}
-	// Fallback for CF_HDROP-only (no CF_UNICODETEXT, no image).
-	if len(hashInput) == 0 {
-		for _, f := range cf {
-			if f.FormatType == win.CF_HDROP && f.Text != "" {
-				hashInput = []byte(f.Text)
-				break
-			}
-		}
-	}
-	if len(hashInput) == 0 {
-		log.Println("[clipboard] No hashable content, returning empty")
+	// Delayed rendering detection: formats were enumerated but all
+	// GetClipboardData calls returned NULL, and no DataObject fallback worked.
+	// This means the clipboard owner uses delayed rendering (SetClipboardData with NULL handle).
+	if len(cf) == 0 && len(pending) > 0 {
+		seq, _, _ := procGetClipboardSequenceNumber.Call()
+		log.Printf("[clipboard] %d formats pending (delayed rendering), scheduling retry goroutine", len(pending))
+		go delayedRetryLoop(hwnd, uint32(seq), pending, dataCh)
 		return model.CapturedData{}
 	}
 
-	h := sha256.Sum256(hashInput)
-	hashStr := fmt.Sprintf("%x", h[:])
-
-	// File entries (CF_HDROP) get a distinct hash prefix to coexist
-	// with plain-text copies of the same path content.
-	if hasHdropFormat(cf) {
-		hashStr = "hdrop:" + hashStr
+	// Build final CapturedData.
+	data, ok := buildCapturedData(cf)
+	if !ok {
+		log.Println("[clipboard] No hashable content, returning empty")
+		return model.CapturedData{}
 	}
-
-	log.Printf("[clipboard] Capture success: hash=%s source=%q", hashStr[:8], exe)
-	return model.CapturedData{
-		Formats:     cf,
-		SourceEXE:   exe,
-		SourceTitle: title,
-		PrimaryHash: hashStr,
-	}
+	log.Printf("[clipboard] Capture success: hash=%s source=%q", data.PrimaryHash[:8], data.SourceEXE)
+	return data
 }
 
 func hasHdropFormat(formats []model.CapturedFormat) bool {
