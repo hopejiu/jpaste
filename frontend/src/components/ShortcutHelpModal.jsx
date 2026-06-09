@@ -32,6 +32,11 @@ const SHORTCUT_GROUPS = [
     { keys: 'Esc', desc: '隐藏窗口（无搜索词时）' },
     { keys: 'Alt+V', desc: '全局快捷键，显示 / 隐藏窗口（可在设置中更改）' },
   ] },
+  { title: '粘贴模式', hint: '底栏可切换三种粘贴方式，决定连续按 Ctrl+V 时的顺序', items: [
+    { keys: '正常', desc: '始终粘贴最新复制的内容，与日常习惯完全一致' },
+    { keys: '栈', desc: '像一叠纸——后放上去的先拿。适合一次性复制多段文字后倒序粘贴' },
+    { keys: '队列', desc: '像排队——先来先得。适合按复制顺序依次粘贴一段段内容' },
+  ] },
 ]
 
 export default function ShortcutHelpModal({ open, onClose }) {
