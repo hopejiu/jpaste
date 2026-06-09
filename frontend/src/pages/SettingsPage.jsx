@@ -58,6 +58,24 @@ export default function SettingsPage() {
     }
   }, [])
 
+  // Global Escape handler (more reliable than container onKeyDown).
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key !== 'Escape') return
+      log.debug('SettingsPage', 'Escape pressed, showClearModal:', showClearModal)
+      e.preventDefault()
+      if (showClearModal) {
+        log.debug('SettingsPage', 'Escape → closing clear modal')
+        setShowClearModal(false)
+      } else {
+        log.debug('SettingsPage', 'Escape → navigating to /')
+        navigate('/')
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [showClearModal, navigate])
+
   const ICON_MAP = { Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio, Url: Link }
 
   useEffect(() => {
@@ -196,17 +214,6 @@ export default function SettingsPage() {
     handleSave({ action_config: cfg })
   }
   
-  const handleContainerKeyDown = (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      if (showClearModal) {
-        setShowClearModal(false)
-      } else {
-        navigate('/')
-      }
-    }
-  }
-
   const displayKey = [mods.join('+'), key].filter(Boolean).join(' + ')
 
   const settingGroups = [
