@@ -29,7 +29,7 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-//go:embed paste.png
+//go:embed logo.png
 var trayIcon []byte
 
 var quitting bool
