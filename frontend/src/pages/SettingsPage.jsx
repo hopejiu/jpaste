@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Events } from '@wailsio/runtime'
-import { ArrowLeft, ChevronUp, ChevronDown, ChevronRight, Trash2, Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio, Link } from 'lucide-react'
+import { ArrowLeft, ChevronUp, ChevronDown, ChevronRight, Trash2, Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio, Link, Clock } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useClipboard } from '../context/ClipboardContext'
 import { Service as HistoryService } from '../../bindings/jpaste/internal/history'
@@ -76,7 +76,7 @@ export default function SettingsPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [showClearModal, navigate])
 
-  const ICON_MAP = { Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio, Url: Link }
+  const ICON_MAP = { Calculator, Braces, Binary, Languages, ExternalLink, FolderOpen, Terminal, Radio, Url: Link, Clock }
 
   useEffect(() => {
     HistoryService.GetStats()

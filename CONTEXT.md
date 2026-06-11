@@ -189,6 +189,7 @@ The six built-in action modules:
 | unicode   | Contains `\uXXXX` pattern          | Editable decode in modal | `String.fromCharCode()` |
 | curl      | Starts with `curl ` (case-insensitive) | Opens separate window with HTTP debugger (parse/edit/send/response) | Go: `curlviewer.Service.OpenCurlViewer()` with `SendCurlRequest()` binding; front-end: `curlconverter` library for parse, `jsoneditor` for JSON response |
 | ws        | Starts with `ws://` or `wss://`     | Opens separate window for WebSocket send/receive | Go: `wssviewer.Service.OpenWsViewer()` opens window; pure front-end WebSocket API |
+| timestamp | 10-digit (seconds) or 13-digit (milliseconds) pure numeric, year 2000–2100 range | Bidirectional modal: edit timestamp ↔ datetime auto-sync | Pure JS (`Date`), custom component with dual inputs |
 
 ## Key Behaviors
 

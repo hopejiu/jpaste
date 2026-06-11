@@ -7,8 +7,9 @@ import unicode from './unicode.action'
 import curl from './curl.action'
 import ws from './ws.action'
 import urlDecode from './urldecode.action'
+import timestamp from './timestamp.action'
 
-const registry = [math, json, url, folder, base64, unicode, curl, ws, urlDecode]
+const registry = [math, json, url, folder, base64, unicode, curl, ws, urlDecode, timestamp]
 
 const byId = Object.fromEntries(registry.map(a => [a.id, a]))
 
