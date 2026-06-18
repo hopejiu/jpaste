@@ -169,6 +169,22 @@ func PrimaryText(formats []CapturedFormat) string {
 			return ""
 		}
 	}
+	// Only fall through to custom/registered formats (≥0xC000) when a
+	// standard text format (CF_TEXT) is present. Applications like Chromium
+	// place internal binary metadata in registered formats that produce
+	// garbled text when read as strings (e.g. RFH routing token).
+	// When no standard format exists, custom formats are application
+	// metadata, not user-visible content.
+	hasStandardText := false
+	for _, f := range formats {
+		if f.FormatType == CF_TEXT {
+			hasStandardText = true
+			break
+		}
+	}
+	if !hasStandardText {
+		return ""
+	}
 	for _, f := range formats {
 		if f.Text != "" {
 			return f.Text
@@ -194,6 +210,16 @@ func PrimaryTextFromEntries(formats []FormatEntry) string {
 		if IsImageFormat(f.FormatType) {
 			return ""
 		}
+	}
+	hasStandardText := false
+	for _, f := range formats {
+		if f.FormatType == CF_TEXT {
+			hasStandardText = true
+			break
+		}
+	}
+	if !hasStandardText {
+		return ""
 	}
 	for _, f := range formats {
 		if f.Content != "" && !strings.HasPrefix(f.Content, "[image ") {

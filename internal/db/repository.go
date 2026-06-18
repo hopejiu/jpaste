@@ -47,7 +47,7 @@ func (r *Repository) QueryHistory(search string, tagMask int, afterCursor1 strin
 		args = append(args, tagMask)
 	}
 	if search != "" {
-		conditions = append(conditions, `e.id IN (SELECT DISTINCT entry_id FROM clipboard_format WHERE content LIKE ?)`)
+		conditions = append(conditions, `e.id IN (SELECT DISTINCT entry_id FROM clipboard_format WHERE content LIKE ? AND format_type = 13)`)
 		args = append(args, "%"+search+"%")
 	}
 	if afterCursor1 != "" {
@@ -302,7 +302,7 @@ func (r *Repository) QueryImageEntryIDs(tagMask int, search string) ([]int64, er
 		args = append(args, tagMask)
 	}
 	if search != "" {
-		baseSQL += ` AND e.id IN (SELECT DISTINCT entry_id FROM clipboard_format WHERE content LIKE ?)`
+		baseSQL += ` AND e.id IN (SELECT DISTINCT entry_id FROM clipboard_format WHERE content LIKE ? AND format_type = 13)`
 		args = append(args, "%"+search+"%")
 	}
 
