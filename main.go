@@ -215,7 +215,7 @@ func main() {
 	// and shown. This avoids the startup center-of-screen flash while keeping
 	// WebView2 continuously rendering (important — hidden windows freeze WebView2).
 	applog.Info("toast: pre-creating window")
-	toastWin := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	toastOpts := application.WebviewWindowOptions{
 		Title:                      "",
 		Width:                      360,
 		Height:                     80,
@@ -244,7 +244,8 @@ func main() {
 				w32.WS_EX_NOREDIRECTIONBITMAP | w32.WS_EX_TOPMOST | w32.WS_EX_TOOLWINDOW),
 		},
 		CloseButtonState: application.ButtonHidden,
-	})
+	}
+	toastWin := app.Window.NewWithOptions(toastOpts)
 	// Position offscreen while still hidden, THEN show — no center flash,
 	// and WebView2 starts rendering immediately at the offscreen location.
 	toastWin.SetPosition(-9999, -9999)
@@ -258,8 +259,22 @@ func main() {
 	showToastWindow := func() {
 		hwnd := w32.HWND(toastWin.NativeWindow())
 		if hwnd == 0 {
-			applog.Warn("toast: native window handle is zero")
-			return
+			// WebView2 进程已崩溃，自动重建窗口。
+			applog.Warn("toast: native window handle is zero, recreating")
+			newWin := app.Window.NewWithOptions(toastOpts)
+			if newWin == nil {
+				applog.Error("toast: window recreation failed: NewWithOptions returned nil")
+				return
+			}
+			newWin.SetPosition(-9999, -9999)
+			newWin.Show()
+			toastWin = newWin
+			hwnd = w32.HWND(toastWin.NativeWindow())
+			if hwnd == 0 {
+				applog.Error("toast: recreated window still has zero handle")
+				return
+			}
+			applog.Info("toast: window recreated successfully")
 		}
 
 		// Force popup style — Wails creates with WS_OVERLAPPEDWINDOW which
