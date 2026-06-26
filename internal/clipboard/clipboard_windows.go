@@ -356,6 +356,7 @@ func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 	ready := make(chan win.HWND, 1)
 	errCh := make(chan error, 1)
 	dataCh := make(chan model.CapturedData, 64)
+	captureReq := make(chan struct{}, 1)
 	done := make(chan struct{})
 
 	// Window creation + message pump on a single locked OS thread.
@@ -393,17 +394,13 @@ func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 				log.Println("[clipboard] WM_QUIT received, exiting loop")
 				break
 			}
-			if msg.Message == wmClipboardUpdate {
-				log.Println("[clipboard] WM_CLIPBOARDUPDATE received")
-				data := captureAll(hwnd, dataCh)
-				if len(data.Formats) > 0 {
-					select {
-					case dataCh <- data:
-					default:
-						log.Println("[clipboard] WARNING: data channel full")
-					}
-				}
+		if msg.Message == wmClipboardUpdate {
+			log.Println("[clipboard] WM_CLIPBOARDUPDATE received")
+			select {
+			case captureReq <- struct{}{}:
+			default:
 			}
+		}
 		}
 		close(done)
 	}()
@@ -417,12 +414,23 @@ func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 		return nil, err
 	}
 
-	// Data processor goroutine.
+	// Data processor goroutine — captures clipboard when signaled.
+	// WM_CLIPBOARDUPDATE 只发信号，不在消息泵里调用 OpenClipboard（避免卡住消息循环）。
+	// 由本 goroutine 在可用时直接读剪贴板，通过 hash 比对去重。
 	go func() {
+		var lastHash string
 		for {
 			select {
+			case <-captureReq:
+				data := captureAll(hwnd, dataCh)
+				if len(data.Formats) > 0 && data.PrimaryHash != lastHash {
+					lastHash = data.PrimaryHash
+					log.Printf("[clipboard] New capture: hash=%s formats=%d", data.PrimaryHash[:12], len(data.Formats))
+					onCapture(data)
+				}
 			case data := <-dataCh:
-				log.Printf("[clipboard] Processing capture: hash=%s formats=%d", data.PrimaryHash[:12], len(data.Formats))
+				lastHash = data.PrimaryHash
+				log.Printf("[clipboard] Deferred capture: hash=%s formats=%d", data.PrimaryHash[:12], len(data.Formats))
 				onCapture(data)
 			case <-done:
 				return
@@ -464,13 +472,9 @@ func captureAll(hwnd win.HWND, dataCh chan<- model.CapturedData) model.CapturedD
 	// Known formats like "HTML Format" coexist with CF_UNICODETEXT, which is captured
 	// by the isTextFormat branch regardless.
 	hasImage := false
-	hasDataObject := false
 	for _, f := range formats {
 		if isImageFormat(f) {
 			hasImage = true
-		}
-		if f >= 0xC000 && formatName(f) == "DataObject" {
-			hasDataObject = true
 		}
 	}
 
@@ -526,12 +530,13 @@ func captureAll(hwnd win.HWND, dataCh chan<- model.CapturedData) model.CapturedD
 	textContent := model.PrimaryText(cf)
 	log.Printf("[clipboard] Captured %d formats, textContent.len=%d, pending=%d", len(cf), len(textContent), len(pending))
 
-	// OLE fallback: apps that use OleSetClipboard (e.g. Office, some file managers)
-	// place data via IDataObject. Standard GetClipboardData returns NULL for
-	// synthesized formats, so we try OLE APIs as a last resort.
-	if textContent == "" && hasDataObject {
-		log.Println("[clipboard] Trying OLE fallback for DataObject format")
+	// OLE fallback: apps that use OleSetClipboard (e.g. Office, Chromium/Electron apps
+	// like CodeBuddy CN) place real content via IDataObject and only put stub text
+	// ("\r\n") in standard CF_UNICODETEXT/CF_TEXT. Try OLE when standard text is
+	// empty or trivial (whitespace-only stub).
+	if textContent == "" || strings.TrimSpace(textContent) == "" {
 		if txt := oleGetClipboardText(); txt != "" {
+			log.Printf("[clipboard] OLE fallback: got %d chars via IDataObject", len(txt))
 			cf = append(cf, model.CapturedFormat{FormatType: win.CF_UNICODETEXT, Text: txt})
 			textContent = txt
 		}
