@@ -383,8 +383,18 @@ func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 		}
 		log.Println("[clipboard] Monitor listening on message-only window")
 
+		heartbeatTick := time.NewTicker(30 * time.Second)
+		defer heartbeatTick.Stop()
+		var msgCount int
 		var msg win.MSG
 		for {
+			// Non-blocking check for heartbeat while waiting for messages.
+			select {
+			case <-heartbeatTick.C:
+				log.Printf("[clipboard] Monitor heartbeat: alive, msgs=%d", msgCount)
+			default:
+			}
+
 			ret := win.GetMessage(&msg, hwnd, 0, 0)
 			if ret == 0 || ret == -1 {
 				log.Printf("[clipboard] Message loop exit (ret=%d)", ret)
@@ -394,13 +404,15 @@ func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 				log.Println("[clipboard] WM_QUIT received, exiting loop")
 				break
 			}
-		if msg.Message == wmClipboardUpdate {
-			log.Println("[clipboard] WM_CLIPBOARDUPDATE received")
-			select {
-			case captureReq <- struct{}{}:
-			default:
+			if msg.Message == wmClipboardUpdate {
+				msgCount++
+				log.Printf("[clipboard] WM_CLIPBOARDUPDATE received (total=%d)", msgCount)
+				select {
+				case captureReq <- struct{}{}:
+				default:
+					log.Println("[clipboard] WARNING: captureReq channel full, dropping WM_CLIPBOARDUPDATE")
+				}
 			}
-		}
 		}
 		close(done)
 	}()
@@ -419,20 +431,31 @@ func startWindowsMonitor(onCapture OnCapture) (func(), error) {
 	// 由本 goroutine 在可用时直接读剪贴板，通过 hash 比对去重。
 	go func() {
 		var lastHash string
+		procTick := time.NewTicker(30 * time.Second)
+		defer procTick.Stop()
 		for {
 			select {
 			case <-captureReq:
 				data := captureAll(hwnd, dataCh)
-				if len(data.Formats) > 0 && data.PrimaryHash != lastHash {
-					lastHash = data.PrimaryHash
-					log.Printf("[clipboard] New capture: hash=%s formats=%d", data.PrimaryHash[:12], len(data.Formats))
-					onCapture(data)
+				if len(data.Formats) > 0 {
+					if data.PrimaryHash != lastHash {
+						lastHash = data.PrimaryHash
+						log.Printf("[clipboard] New capture: hash=%s formats=%d", data.PrimaryHash[:12], len(data.Formats))
+						onCapture(data)
+					} else {
+						log.Printf("[clipboard] Skip duplicate: hash=%s (same as last)", data.PrimaryHash[:12])
+					}
+				} else {
+					log.Println("[clipboard] captureAll returned empty formats")
 				}
 			case data := <-dataCh:
 				lastHash = data.PrimaryHash
 				log.Printf("[clipboard] Deferred capture: hash=%s formats=%d", data.PrimaryHash[:12], len(data.Formats))
 				onCapture(data)
+			case <-procTick.C:
+				log.Println("[clipboard] Processor heartbeat: alive")
 			case <-done:
+				log.Println("[clipboard] Data processor exiting")
 				return
 			}
 		}

@@ -58,22 +58,22 @@ func (h *watcherHandler) handle(data model.CapturedData) {
 		applog.Info("dedup entry", "hash", data.PrimaryHash[:12])
 	}
 
-	// Push text to FILO stack when stack mode is enabled.
-	stackEnabled := h.filoStack.Enabled()
+	// Push text to queue mode when enabled.
+	queueEnabled := h.filoStack.Enabled()
 	textToPush := model.PrimaryText(data.Formats)
-	applog.Info("stack decision",
-		"stackEnabled", stackEnabled,
+	applog.Info("queue decision",
+		"queueEnabled", queueEnabled,
 		"isSelfWrite", isSelfWrite,
 		"text", previewText(textToPush),
 		"hash", data.PrimaryHash[:12],
 	)
-	if stackEnabled && !isSelfWrite && textToPush != "" {
+	if queueEnabled && !isSelfWrite && textToPush != "" {
 		h.filoStack.Push(textToPush)
 	}
 
-	// When in stack/queue mode, detect non-text captures (images, files)
+	// When in queue mode, detect non-text captures (images, files)
 	// and auto-exit the mode with a toast.
-	if stackEnabled && !isSelfWrite {
+	if queueEnabled && !isSelfWrite {
 		hasNonText := false
 		for _, f := range data.Formats {
 			if model.IsImageFormat(f.FormatType) || model.IsHdropFormat(f.FormatType) {

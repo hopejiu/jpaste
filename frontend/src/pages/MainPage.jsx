@@ -182,16 +182,16 @@ export default function MainPage() {
       .catch(err => log.error('MainPage', 'Failed to copy all:', err))
   }, [entries])
 
-  // --- Stack/Queue popup ---
-  const [stackItems, setStackItems] = useState([])
+  // --- Queue popup ---
+  const [queueItems, setQueueItems] = useState([])
   const [showPopup, setShowPopup] = useState(false)
   const popupRef = useRef(null)
 
   const fetchItems = useCallback(async () => {
     try {
       const items = await FiloService.GetItems()
-      setStackItems(items || [])
-    } catch { setStackItems([]) }
+      setQueueItems(items || [])
+    } catch { setQueueItems([]) }
   }, [])
 
   const handlePopupEnter = useCallback(() => {
@@ -203,11 +203,11 @@ export default function MainPage() {
     setShowPopup(false)
   }, [])
 
-  const isNonNormal = settings.paste_order === 'stack' || settings.paste_order === 'queue'
+  const isQueueMode = settings.paste_order === 'queue'
 
   const modalAction = modal ? getById(modal.actionId) : null
 
-  const modeLabels = { stack: '栈', queue: '队列' }
+  const modeLabels = { queue: '队列' }
 
   return (
     <div className="flex flex-col h-screen outline-none" onKeyDown={wrappedHandleKeyDown} tabIndex={0}>
@@ -295,12 +295,10 @@ export default function MainPage() {
           onMouseEnter={handlePopupEnter}
           onMouseLeave={handlePopupLeave}
         >
-          {['normal', 'stack', 'queue'].map(mode => {
+          {['normal', 'queue'].map(mode => {
             const active = (settings.paste_order || 'normal') === mode
-            const label = mode === 'normal' ? '正常' : mode === 'stack' ? '栈' : '队列'
-            const title = mode === 'normal' ? '正常粘贴'
-              : mode === 'stack' ? '栈模式：Ctrl+V 倒序粘贴（后进先出）'
-              : '队列模式：Ctrl+V 顺序粘贴（先进先出）'
+            const label = mode === 'normal' ? '正常' : '队列'
+            const title = mode === 'normal' ? '正常粘贴' : '队列模式：Ctrl+V 顺序粘贴（先进先出）'
             return (
               <button
                 key={mode}
@@ -316,39 +314,34 @@ export default function MainPage() {
               </button>
             )
           })}
-          {/* Stack/Queue hover popup */}
-          {showPopup && isNonNormal && (
+          {/* Queue hover popup */}
+          {showPopup && isQueueMode && (
             <div
               className="absolute bottom-full right-0 mb-1.5 min-w-[200px] max-w-[280px] max-h-[200px] overflow-y-auto bg-elevated border border-border rounded-md p-2 z-[2000] animate-[slideDown_120ms_ease-out]"
               style={{ boxShadow: '0 4px 16px rgba(0,0,0,0.12)' }}
             >
               <div className="px-3 pb-1.5 text-[11px] font-semibold text-primary border-b border-border whitespace-nowrap">
-                {modeLabels[settings.paste_order]} · {stackItems.length} 项
+                队列 · {queueItems.length} 项
               </div>
-              {stackItems.length === 0 ? (
+              {queueItems.length === 0 ? (
                 <div className="py-3 px-4 text-xs text-muted text-center">暂无内容</div>
               ) : (
-                stackItems.map((item, idx) => {
-                  const isNext = settings.paste_order === 'stack' ? idx === stackItems.length - 1 : idx === 0
-                  return (
-                    <div
-                      key={idx}
-                      className={`flex items-center gap-1.5 px-3 py-1 text-xs leading-[1.4] ${
-                        isNext ? 'text-foreground font-medium' : 'text-muted font-normal'
-                      }`}
-                    >
-                      <span className="flex-shrink-0 text-[10px] w-3.5 text-center" style={{ color: isNext ? 'var(--color-primary)' : 'transparent' }}>
-                        {isNext ? '▶' : ''}
-                      </span>
-                      <span className="overflow-hidden text-ellipsis whitespace-nowrap">{item}</span>
-                    </div>
-                  )
-                })
+                queueItems.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex items-center gap-1.5 px-3 py-1 text-xs leading-[1.4] ${
+                      idx === 0 ? 'text-foreground font-medium' : 'text-muted font-normal'
+                    }`}
+                  >
+                    <span className="flex-shrink-0 text-[10px] w-3.5 text-center" style={{ color: idx === 0 ? 'var(--color-primary)' : 'transparent' }}>
+                      {idx === 0 ? '▶' : ''}
+                    </span>
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap">{item}</span>
+                  </div>
+                ))
               )}
               <div className="px-3 pt-1.5 pb-1 text-[10px] text-muted border-t border-border leading-[1.4]">
-                {settings.paste_order === 'stack'
-                  ? '▶ 下一个将粘贴（后进先出）· 复制图片/文件将自动退出栈模式'
-                  : '▶ 下一个将粘贴（先进先出）· 复制图片/文件将自动退出队列模式'}
+                ▶ 下一个将粘贴（先进先出）· 复制图片/文件将自动退出队列模式
               </div>
             </div>
           )}

@@ -307,6 +307,9 @@ func main() {
 		if prevHwnd != 0 && prevHwnd != hwnd {
 			w32.SetForegroundWindow(prevHwnd)
 		}
+		applog.Debug("toast: showToastWindow done",
+			"hwnd", hwnd, "pos", fmt.Sprintf("%d,%d", targetX, targetY),
+			"prevHwnd", prevHwnd)
 	}
 
 	// hideToastOffscreen moves the window offscreen instead of hiding it,
@@ -341,6 +344,8 @@ func main() {
 			}
 			data = td
 		}
+
+		applog.Debug("toast: Emit", "name", name, "isPreview", isPreview, "opacity", 0)
 
 		// Emit to frontend (async delivery via IPC).
 		handle.Emit(name, data)
@@ -613,12 +618,14 @@ func showWindow(win application.Window) {
 		applog.Info("showWindow: win is nil")
 		return
 	}
-	applog.Info("showWindow: capturing foreground + showing")
+	wasVisible := win.IsVisible()
+	applog.Info("showWindow", "wasVisible", wasVisible)
 	clipboard.CaptureForeground()
 	win.Center()
 	win.Show()
 	win.Focus()
 	win.EmitEvent(model.WindowShown, nil)
+	applog.Debug("showWindow: done", "nowVisible", win.IsVisible())
 }
 
 func hideWindow(win application.Window) {
@@ -626,15 +633,17 @@ func hideWindow(win application.Window) {
 		applog.Info("hideWindow: win is nil")
 		return
 	}
+	wasVisible := win.IsVisible()
 	// Note: we do NOT check win.IsVisible() here — Wails' internal visibility
 	// state can be stale during async window operations. Always attempt Hide();
 	// hiding an already-hidden window is a safe no-op.
-	applog.Info("hideWindow: hiding")
+	applog.Info("hideWindow", "wasVisible", wasVisible)
 	win.EmitEvent(model.WindowHiding, nil)
 	// Move offscreen BEFORE hiding to prevent the WebView2 teardown flash
 	// (transparent/semi-transparent frame that Windows shows momentarily).
 	win.SetPosition(-9999, -9999)
 	win.Hide()
+	applog.Debug("hideWindow: done", "nowVisible", win.IsVisible())
 }
 
 func must[T any](val T, err error) T {

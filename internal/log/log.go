@@ -21,7 +21,7 @@ var (
 )
 
 // Init sets up slog + standard log to write to appdata/jPaste/jpaste-{date}-{hour}.log.
-// Starts a goroutine that rotates logs hourly and cleans up files older than 3 days.
+// Starts a goroutine that rotates logs hourly and cleans up files older than 12 hours.
 func Init(dir string) error {
 	logDir = dir
 	if err := os.MkdirAll(logDir, 0700); err != nil {
@@ -86,7 +86,7 @@ func rotateIfNeeded() {
 func cleanOldLogs() {
 	mu.Lock()
 	defer mu.Unlock()
-	cutoff := time.Now().Add(-72 * time.Hour)
+	cutoff := time.Now().Add(-12 * time.Hour)
 	entries, err := os.ReadDir(logDir)
 	if err != nil {
 		return

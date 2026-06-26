@@ -15,7 +15,6 @@ import (
 
 const (
 	ModeNormal = "normal"
-	ModeStack  = "stack"
 	ModeQueue  = "queue"
 )
 type Service struct {
@@ -113,7 +112,6 @@ func (s *Service) Push(text string) {
 }
 
 // Pop removes an item from the list. Direction depends on strategy:
-//   - stack: removes from the back (LIFO)
 //   - queue: removes from the front (FIFO)
 //   - normal: always returns false
 func (s *Service) Pop() (string, bool) {
@@ -149,7 +147,7 @@ func (s *Service) Len() int {
 	return s.items.Len()
 }
 
-// GetItems returns previews of all items in the current list (newest first for stack).
+// GetItems returns previews of all items in the current list.
 // Returns nil when mode is normal. Exposed to frontend via Wails binding.
 func (s *Service) GetItems() []string {
 	s.mu.Lock()
@@ -171,7 +169,7 @@ func (s *Service) GetItems() []string {
 
 // SetMode changes the paste order mode.
 // Switching to normal stops the hook and clears the list.
-// Switching between stack/queue preserves existing items.
+// Switching to queue starts the hook and clears the list (from normal).
 func (s *Service) SetMode(mode string) {
 	s.mu.Lock()
 	if mode == s.mode {
@@ -189,11 +187,11 @@ func (s *Service) SetMode(mode string) {
 		s.stopHook()
 		s.Clear()
 	} else if oldMode == ModeNormal {
-		// Switching from normal to stack/queue: start fresh.
+		// Switching from normal to queue: start fresh.
 		s.Clear()
 		s.startHook()
 	} else {
-		// Switching between stack/queue: preserve items, hook is already running.
+		// Switching between non-normal modes (should not happen after stack removal).
 		log.Printf("[filostack] preserved %d items", s.Len())
 	}
 }

@@ -18,14 +18,11 @@ Text-based formats (`CF_UNICODETEXT`, `CF_HTML`, `CF_RTF`, `CF_HDROP`) are store
 The application that wrote the current clipboard content. Captured via `GetClipboardOwner()` → `GetWindowThreadProcessId()` → `OpenProcess()` + `QueryFullProcessImageName()` to record the full executable path, plus `GetWindowText()` for the window title at time of copy. NULL owner (clipboard cleared or cross-session) stores empty strings.
 
 ### Paste Order
-A three-state setting (`settings.paste_order`: `"normal"` / `"stack"` / `"queue"`) that controls how Ctrl+V consumes recently captured clipboard items. When non-normal, a `WH_KEYBOARD_LL` global hook intercepts user Ctrl+V, pops an item from an in-memory `container/list`, writes it to the system clipboard, and lets the original Ctrl+V pass through. Only `CF_UNICODETEXT` (plain text) is supported. Switching to/from `"normal"` clears the list and stops/starts the hook. Switching **between** stack and queue preserves existing items — only the consumption direction changes. jPaste's own clipboard writes and simulated paste are guarded by self-write hash and self-paste timestamp flags. Setting to `"normal"` stops the hook and clears the list.
+A two-state setting (`settings.paste_order`: `"normal"` / `"queue"`) that controls how Ctrl+V consumes recently captured clipboard items. When queue mode is active, a `WH_KEYBOARD_LL` global hook intercepts user Ctrl+V, pops an item from the front of an in-memory `container/list` (FIFO), writes it to the system clipboard, and lets the original Ctrl+V pass through. Only `CF_UNICODETEXT` (plain text) is supported. Switching to/from `"normal"` clears the list and stops/starts the hook. jPaste's own clipboard writes and simulated paste are guarded by self-write hash and self-paste timestamp flags.
 
-**Auto-exit on non-text capture**: When stack or queue mode is active and the user copies content containing image (`CF_DIB`/`CF_DIBV5`) or file (`CF_HDROP`) formats, the mode automatically reverts to `"normal"` (persisted to `settings.json`). The current stack/queue list is cleared and a toast notification explains the exit. This bypasses the `NotifyEnabled` toggle. Self-writes from jPaste's own clipboard operations are exempted.
+**Auto-exit on non-text capture**: When queue mode is active and the user copies content containing image (`CF_DIB`/`CF_DIBV5`) or file (`CF_HDROP`) formats, the mode automatically reverts to `"normal"` (persisted to `settings.json`). The queue list is cleared and a toast notification explains the exit. This bypasses the `NotifyEnabled` toggle. Self-writes from jPaste's own clipboard operations are exempted.
 
-**Stack/Queue visualisation**: The footer displays three mode toggle buttons (正常/栈/队列). Hovering over the active stack or queue button shows a popup listing the current items with a ▶ arrow indicating the next item to be pasted. The popup also displays the item count and a brief explanation of the mode behavior. The `filostack.Service` exposes a `GetItems()` Wails binding that returns previews of all items in the current list.
-
-### Clipboard Stack
-A **Paste Order** sub-mode (`paste_order: "stack"`). Items are consumed from the back of the list — LIFO (Last In, First Out). Copy order `1,2,3,4,5` → paste order `5,4,3,2,1`.
+**Queue visualisation**: The footer displays two mode toggle buttons (正常/队列). Hovering over the queue button shows a popup listing the current items with a ▶ arrow indicating the next item (the first) to be pasted. The popup also displays the item count and a brief explanation of the mode behavior. The `filostack.Service` exposes a `GetItems()` Wails binding that returns previews of all items.
 
 ### Clipboard Queue
 A **Paste Order** sub-mode (`paste_order: "queue"`). Items are consumed from the front of the list — FIFO (First In, First Out). Copy order `1,2,3,4,5` → paste order `1,2,3,4,5`.
@@ -136,7 +133,7 @@ A `.txt` file created in `%TEMP%` with the selected entry's content, then opened
 | Pattern | Location | Usage |
 |---------|----------|-------|
 | **Repository** | `internal/repository/` | Single `Repository` struct owns ALL SQLite queries. `history.EntryStore` is a thin adapter wrapping the `Repository` instance. |
-| **Strategy** | `internal/filostack/` | `PasteStrategy` interface with `StackStrategy` (LIFO) and `QueueStrategy` (FIFO) implementations. The `Service.Pop()` delegates to the strategy instead of switch-on-mode. |
+| **Strategy** | `internal/filostack/` | `PasteStrategy` interface with `QueueStrategy` (FIFO) implementation. The `Service.Pop()` delegates to the strategy. |
 | **Functional Options** | `internal/history/`, `internal/fileop/`, `internal/filostack/` | `WithPasteFunc`, `WithEmitFunc`, `WithNotifyFunc`, `WithImageStore`, `WithOpenFileManager` etc. — type-safe optional service configuration without builder boilerplate. |
 | **Interface Segregation** | `internal/history/store.go` | `EntryStore` interface abstracts SQLite; tests use in-memory fakes. `ImageStorer` separates image I/O from DB. |
 | **Event-Driven** | `internal/toast/`, `internal/events/` | Go emits Wails custom events (`toast-notification`, `clipboard-updated`); front-end listens via `Events.On()`. |
