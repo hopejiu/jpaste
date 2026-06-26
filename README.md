@@ -11,7 +11,7 @@ Windows 剪贴板管理器，基于 Wails v3 + React。
 - **来源追踪** — 记录每条剪贴板内容的来源应用和窗口标题
 - **标签过滤** — 全部 / 文本 / 图片 / 网址 / 文件 / 收藏，位掩码分类
 - **即时搜索** — 全文搜索 + 正则表达式搜索，支持更新时间/字符串长度排序（升降序）
-- **粘贴顺序控制** — 三种模式：正常、栈（后进先出）、队列（先进先出），底部面板一键切换
+- **粘贴顺序控制** — 两种模式：正常、队列（先进先出），底部面板一键切换
 - **收藏保护** — 自动清理不会删除收藏条目；清空全部时可选保留收藏
 - **内容识别操作** — JSON 查看器、数学计算、Base64 解编码、URL 打开、Unicode 转换
 - **图片查看** — 独立窗口，自适应尺寸，缩放/拖拽，支持 ← → 切换图片
@@ -39,9 +39,15 @@ Windows 剪贴板管理器，基于 Wails v3 + React。
 | `Alt+V` | 全局热键（Go 端） |
 | `F12` | 打开开发者工具（DevTools） |
 
+## 官网
+
+[https://hopejiu.github.io/jpaste/](https://hopejiu.github.io/jpaste/) — 功能展示、使用文档、常见问题。
+
+源码在 [`website/`](website/) 目录，基于 Vite + React + TypeScript + Tailwind。
+
 ## 下载
 
-从 [Releases](https://github.com/wangxianyu/jPaste/releases) 下载最新的 `jpaste.exe`。便携式，无需安装。
+从 [Releases](https://github.com/hopejiu/jpaste/releases) 下载最新的 `jpaste.exe`。便携式，无需安装。
 
 ## 开发
 
@@ -110,7 +116,7 @@ wails3 build
 - **Toast 通知**: 预创建的隐藏无框窗口，通过离屏定位避免闪烁。WebView2 始终保持渲染，收到事件后移入可视区域，3 秒后移回屏幕外。与主窗口路由完全隔离。
 - **事件系统**: Go 端通过 `app.Event.Emit` 广播事件，前端通过 `@wailsio/runtime` 的 `Events.On` 监听。前端日志通过 `Events.Emit('frontend-log', ...)` 回传后端写入统一日志文件。
 - **剪贴板监控**: 消息窗口 (`HWND_MESSAGE`) + `AddClipboardFormatListener`，无需轮询。
-- **粘贴顺序控制**: 键盘钩子 (`WH_KEYBOARD_LL`) 拦截 Ctrl+V，从内部栈/队列中弹出内容。
+- **粘贴顺序控制**: 键盘钩子 (`WH_KEYBOARD_LL`) 拦截 Ctrl+V，从内部队列中弹出内容。
 - **自写入跟踪**: `SelfWriteTracker`（`internal/util/tracker.go`）统一管理 clipboard 和 filostack 的自写入检测，消除代码克隆。
 - **前端通用组件**:
   - `Modal.jsx` — 通用模态框（ESC/遮罩关闭、尺寸变体），替代 4 处手写的遮罩层

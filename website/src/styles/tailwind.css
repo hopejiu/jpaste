@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #F8F6FF;
+  color: #1E1B2A;
+}
+
+::selection {
+  background-color: rgba(139, 92, 246, 0.2);
+  color: inherit;
+}

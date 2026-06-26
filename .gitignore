@@ -24,3 +24,8 @@ build_err.txt
 gen_err.txt
 input.txt
 *.exe
+
+# Website
+website/node_modules
+website/dist
+website/.env
